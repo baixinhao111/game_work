@@ -1,0 +1,13 @@
+# Dependencies & build outputs
+node_modules/
+dist/
+.vite/
+
+# macOS & editor artifacts
+.DS_Store
+*.log
+*.local
+
+# Environment files
+.env
+.env.*

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#181A24" />
+    <title>周一突围：DDL 战线</title>
+    <link rel="stylesheet" href="/src/styles/main.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas"></canvas>
+
+      <!-- 游戏内 HUD 覆层 -->
+      <div id="hud-layer" class="hud-layer hidden">
+        <div class="hud-top">
+          <div class="hud-left">
+            <div class="sticker-pill day-pill" id="hud-day-badge">周一 · 早八噩梦</div>
+            <div class="hud-sub-row">
+              <span class="mini-badge weapon-badge" id="hud-weapon-badge">订书机速射</span>
+              <span class="mini-badge shield-badge hidden" id="hud-shield-badge">🛡️ 0</span>
+            </div>
+          </div>
+          <div class="hud-actions">
+            <button type="button" class="icon-btn" id="btn-mute" aria-label="音效开关">🔊</button>
+            <button type="button" class="icon-btn" id="btn-pause" aria-label="暂停游戏">⏸</button>
+          </div>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="progress-track">
+            <div class="progress-fill" id="hud-progress-fill"></div>
+          </div>
+          <span class="progress-time" id="hud-clock">09:00</span>
+        </div>
+
+        <!-- 嘴替弹幕气泡槽 -->
+        <div class="quip-banner hidden" id="quip-banner">
+          <span class="quip-tag">嘴替</span>
+          <span class="quip-text" id="quip-text"></span>
+        </div>
+
+        <!-- 右下角大招打卡按钮 -->
+        <div class="hud-bottom">
+          <button type="button" class="ult-btn" id="btn-ult" disabled>
+            <span class="ult-fill" id="ult-fill"></span>
+            <span class="ult-label" id="ult-label">18:00 下班 0%</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 主菜单启动页 -->
+      <div id="menu-overlay" class="overlay-screen">
+        <div class="menu-card">
+          <div class="sticky-tag">NEO-POP 反内卷爽游</div>
+          <h1 class="game-title">
+            周一突围
+            <span class="title-sub">DDL FRONTLINE</span>
+          </h1>
+          <div class="menu-hero-duo">
+            <img class="menu-avatar" src="/assets/sprites/hero_slacker.png" alt="摸鱼战士" />
+            <span class="vs-badge">VS</span>
+            <img class="menu-avatar" src="/assets/sprites/enemy_zombie.png" alt="加班丧尸" />
+            <img class="menu-avatar boss" src="/assets/sprites/boss_alarm.png" alt="地狱闹钟" />
+          </div>
+          <p class="title-slogan">单指划开加班丧尸潮，狂射红门洗白成准点下班！</p>
+
+          <div class="menu-stats">
+            <div class="stat-chip">
+              <span class="stat-label">☕ 咖啡豆</span>
+              <span class="stat-val" id="menu-beans">0</span>
+            </div>
+            <div class="stat-chip">
+              <span class="stat-label">👥 最高小队</span>
+              <span class="stat-val" id="menu-best-squad">0</span>
+            </div>
+            <div class="stat-chip">
+              <span class="stat-label">📅 已通关</span>
+              <span class="stat-val" id="menu-clears">0 次</span>
+            </div>
+          </div>
+
+          <div class="stage-preview">
+            <div class="stage-day">DAY 01 · 周一</div>
+            <div class="stage-name">早八噩梦（高密度尸潮版）</div>
+            <div class="stage-boss">关底 Boss：07:00 早高峰地狱闹钟</div>
+          </div>
+
+          <button type="button" class="cta-btn" id="btn-start">
+            打卡上班 · 开始突围
+          </button>
+
+          <div class="control-tips">
+            <span>👆 单指左右拖拽移动（自动射击）</span>
+            <span>🔫 狂射红门可将其“驳回”翻转为蓝门</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 暂停面板 -->
+      <div id="pause-overlay" class="overlay-screen hidden">
+        <div class="modal-card">
+          <div class="sticky-tag warn">带薪暂停中</div>
+          <h2 class="modal-title">去茶水间喘口气</h2>
+          <p class="modal-desc">老板正在走廊巡逻，随时可以继续突围。</p>
+          <div class="modal-actions">
+            <button type="button" class="cta-btn" id="btn-resume">继续摸鱼</button>
+            <button type="button" class="secondary-btn" id="btn-restart-pause">重新打卡</button>
+            <button type="button" class="ghost-btn" id="btn-home-pause">返回工位主页</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 结算面板 -->
+      <div id="result-overlay" class="overlay-screen hidden">
+        <div class="modal-card result-card">
+          <div class="sticky-tag" id="result-rank-tag">SSR · 工位赛博战神</div>
+          <h2 class="modal-title" id="result-title">18:00 准点下班！</h2>
+          <p class="modal-desc" id="result-comment">老板画的饼还没落地，就已经被你全数击碎。</p>
+
+          <div class="result-grid">
+            <div class="result-item">
+              <span class="r-label">最大小队</span>
+              <span class="r-val" id="res-max-squad">0</span>
+            </div>
+            <div class="result-item">
+              <span class="r-label">驳回红门</span>
+              <span class="r-val" id="res-flipped">0 次</span>
+            </div>
+            <div class="result-item">
+              <span class="r-label">击退需求</span>
+              <span class="r-val" id="res-kills">0</span>
+            </div>
+            <div class="result-item highlight">
+              <span class="r-label">赚取咖啡豆</span>
+              <span class="r-val" id="res-beans">+0 ☕</span>
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="cta-btn" id="btn-retry">再来一局</button>
+            <button type="button" class="secondary-btn" id="btn-home-result">返回主页</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ?debug=1 性能与错误监控浮窗 -->
+      <div id="debug-overlay" class="debug-overlay hidden"></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
