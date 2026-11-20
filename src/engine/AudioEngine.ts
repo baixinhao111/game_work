@@ -1,4 +1,6 @@
+import type { QuipChannel } from '../data/quips';
 import type { WeaponId } from '../game/types';
+import { triggerMiniToolVibrate, type VibrateIntensity } from '../platform/MiniToolBridge';
 
 // 五声音阶升调频率 (C5, D5, E5, G5, A5, C6, D6, E6)
 const PENTATONIC_SCALE = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.51];
@@ -9,6 +11,7 @@ export class AudioEngine {
   private muted = false;
   private unlocked = false;
   private lastShootSoundTime = 0;
+  private lastQuipSoundTime = 0;
 
   constructor(initialMuted = false) {
     this.muted = initialMuted;
@@ -65,13 +68,14 @@ export class AudioEngine {
 
   vibrate(pattern: number | number[]): void {
     if (this.muted) return;
-    try {
-      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-        navigator.vibrate(pattern);
-      }
-    } catch {
-      // iOS Safari 等不支持环境静默跳过
+    let intensity: VibrateIntensity = 'medium';
+    if (typeof pattern === 'number') {
+      intensity = pattern <= 15 ? 'light' : pattern <= 30 ? 'medium' : 'heavy';
+    } else if (Array.isArray(pattern) && pattern.length > 0) {
+      const tail = pattern[pattern.length - 1];
+      intensity = tail >= 40 ? 'long' : 'medium';
     }
+    triggerMiniToolVibrate(intensity);
   }
 
   playShoot(weaponId: WeaponId): void {
@@ -86,6 +90,12 @@ export class AudioEngine {
       this.playNoise(0.035, 1800, 0.05);
     } else if (weaponId === 'americano') {
       this.playTone(1320, 560, 0.075, 'sawtooth', 0.055);
+    } else if (weaponId === 'drone') {
+      this.playTone(620, 980, 0.05, 'square', 0.04);
+    } else if (weaponId === 'headphone') {
+      this.playTone(220, 440, 0.12, 'sine', 0.09);
+    } else if (weaponId === 'ai_pod') {
+      this.playTone(1760, 1240, 0.03, 'square', 0.04);
     } else {
       // stapler 订书机清脆点击
       this.playTone(760, 290, 0.04, 'triangle', 0.065);
@@ -158,6 +168,24 @@ export class AudioEngine {
     notes.forEach((f, idx) => {
       this.playToneAt(now + idx * 0.12, f, f * 0.96, 0.18, 'sawtooth', 0.08);
     });
+  }
+
+  /** 三通道嘴替专属提示音：气泡啵 / 工作群叮咚 / Boss 扩音呛声 */
+  playQuip(channel: QuipChannel): void {
+    if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+    const now = this.ctx.currentTime;
+    if (now - this.lastQuipSoundTime < 0.35) return;
+    this.lastQuipSoundTime = now;
+
+    if (channel === 'SQUAD') {
+      this.playToneAt(now, 360, 740, 0.06, 'sine', 0.075);
+    } else if (channel === 'CHAT') {
+      this.playToneAt(now, 880, 880, 0.075, 'sine', 0.08);
+      this.playToneAt(now + 0.065, 1174.66, 1174.66, 0.14, 'triangle', 0.085);
+    } else {
+      this.playToneAt(now, 195, 135, 0.13, 'sawtooth', 0.065);
+      this.playToneAt(now + 0.04, 330, 260, 0.08, 'square', 0.045);
+    }
   }
 
   private playTone(

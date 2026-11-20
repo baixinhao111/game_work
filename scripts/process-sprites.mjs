@@ -2,10 +2,10 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const ARTIFACT_DIR =
-  '/Users/baixinhao/.gemini/antigravity/brain/8e0be657-57f7-4c28-9260-abbf11b26447';
-const OUT_DIR = '/Users/baixinhao/Downloads/smallgame/public/assets/sprites';
-const PREVIEW_PATH = path.join(ARTIFACT_DIR, 'scratch', 'sprites_preview.png');
+// 原图目录可用 SPRITE_RAW_DIR 覆盖；默认读取 gen-sprites.mjs 的输出目录 art/raw
+const ARTIFACT_DIR = path.resolve(process.env.SPRITE_RAW_DIR ?? 'art/raw');
+const OUT_DIR = path.resolve('public/assets/sprites');
+const PREVIEW_PATH = path.join(ARTIFACT_DIR, 'sprites_preview.png');
 
 const MANIFEST = [
   { name: 'hero_slacker', src: 'hero_slacker_1795073989989.jpg', size: 256 },
@@ -17,7 +17,11 @@ const MANIFEST = [
   { name: 'enemy_client_monster', src: 'enemy_client_monster_1795074041716.jpg', size: 256 },
   { name: 'enemy_ppt_golem', src: 'enemy_ppt_golem_1795074090208.jpg', size: 256 },
   { name: 'enemy_ddl_flame', src: 'enemy_ddl_flame_1795074040862.jpg', size: 256 },
-  { name: 'boss_alarm', src: 'boss_alarm_1795074048025.jpg', size: 384 }
+  { name: 'boss_alarm', src: 'boss_alarm_1795074048025.jpg', size: 384 },
+  { name: 'boss_projector', src: 'boss_projector.png', size: 384 },
+  { name: 'boss_hydra', src: 'boss_hydra.png', size: 384 },
+  { name: 'boss_server', src: 'boss_server.png', size: 384 },
+  { name: 'boss_kpi', src: 'boss_kpi.png', size: 384 }
 ];
 
 function getImageSize(filePath) {
@@ -270,7 +274,7 @@ function cropSquareAndScale(rgba, targetSize, outPath) {
 function buildCheckerPreview(outPaths) {
   const cell = 200;
   const cols = 5;
-  const rows = 2;
+  const rows = Math.max(2, Math.ceil(outPaths.length / cols));
   const W = cols * cell;
   const H = rows * cell;
   const canvas = Buffer.alloc(W * H * 4);
@@ -356,7 +360,8 @@ if (args[0] === '--all') {
     const inPath = path.join(ARTIFACT_DIR, item.src);
     const outPath = path.join(OUT_DIR, `${item.name}.png`);
     if (!fs.existsSync(inPath)) {
-      throw new Error(`Missing raw sprite: ${inPath}`);
+      console.warn(`Skip ${item.name}: raw sprite not found (${inPath})`);
+      continue;
     }
     processSingle(inPath, outPath, item.size);
     outPaths.push(outPath);

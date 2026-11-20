@@ -1,22 +1,22 @@
 import { PALETTE } from '../data/palette';
-import { WEAPONS } from '../data/weapons';
 import type { AudioEngine } from '../engine/AudioEngine';
 import { ObjectPool } from '../engine/ObjectPool';
-import { LANE_HALF_W, PLAYER_Y, projectX, TRACK_BOTTOM_Y, TRACK_TOP_Y } from '../engine/Viewport';
+import { LANE_HALF_W, PLAYER_Y, projectX, SCROLL_SPEED, TRACK_BOTTOM_Y, TRACK_TOP_Y } from '../engine/Viewport';
 import type { AffixId, Gate, GateConfig } from './types';
 import type { QuipEvent } from '../data/quips';
-
-const TRACK_SCROLL_SPEED = 136;
 
 export interface GateTriggerContext {
   squadCount: number;
   shieldCount: number;
+  /** 天赋「防弹厚脸皮」减员倍率 */
+  lossMult: number;
   setSquadCount: (next: number) => void;
   addShield: (delta: number) => void;
   addUltCharge: (delta: number) => void;
   setWeapon: (weaponId: NonNullable<GateConfig['rewardWeapon']>) => void;
   grantAffix: (affixId: AffixId) => void;
   addBeans: (amount: number) => void;
+  triggerOverload: (durationSec: number) => void;
   spawnAmbushMini: (laneX: number, y: number) => void;
   spawnFxBurst: (x: number, y: number, color: string, count: number) => void;
   spawnFloatingText: (x: number, y: number, text: string, color: string, size?: number) => void;
@@ -24,6 +24,24 @@ export interface GateTriggerContext {
   triggerShake: (mag: number, sec: number) => void;
   triggerQuip: (ev: QuipEvent) => void;
   onGateFlipped: () => void;
+}
+
+/** 洗白后的蓝门可继续射击加码的上限 */
+export function getGateFlipCap(g: Gate): number {
+  return g.initialOp === '÷' ? 12 : Math.max(6, g.initialValue);
+}
+
+/**
+ * 统一判定当前门是否会拦截并吸收子弹：
+ * - 空投补给箱、未打满上限的可洗白红门/已洗白蓝门会拦截子弹；
+ * - 普通增益光幕（+ / × / 盲盒 / 充能 / 过载 / 跷跷板右门）以及已打满上限的洗白门会让子弹直接穿透。
+ */
+export function isGateShootable(g: Gate): boolean {
+  if (!g.active || g.pairLocked) return false;
+  if (g.kind === 'SUPPLY_CRATE') return true;
+  if (!g.shootableToFlip) return false;
+  if (g.flippedToBlue && g.value >= getGateFlipCap(g)) return false;
+  return true;
 }
 
 export class GateSystem {
@@ -57,6 +75,8 @@ export class GateSystem {
         moveDir: 1,
         barrelHp: 0,
         barrelMaxHp: 0,
+        linkedPartnerId: undefined,
+        overloadDurationSec: 0,
         hitFlashTimer: 0,
         bounceScale: 1
       }),
@@ -67,6 +87,8 @@ export class GateSystem {
         g.flipTickCount = 0;
         g.hitFlashTimer = 0;
         g.bounceScale = 1;
+        g.linkedPartnerId = undefined;
+        g.overloadDurationSec = 0;
         g.rewardWeapon = undefined;
         g.rewardAffix = undefined;
         g.labelOverride = undefined;
@@ -100,6 +122,8 @@ export class GateSystem {
       g.moveDir = 1;
       g.barrelHp = cfg.barrelHp ?? 0;
       g.barrelMaxHp = cfg.barrelHp ?? 0;
+      g.linkedPartnerId = cfg.linkedPartnerId;
+      g.overloadDurationSec = cfg.overloadDurationSec ?? 0;
       g.rewardWeapon = cfg.rewardWeapon;
       g.rewardAffix = cfg.rewardAffix;
       g.labelOverride = cfg.labelOverride;
@@ -107,7 +131,7 @@ export class GateSystem {
       if (cfg.kind === 'SUPPLY_CRATE') {
         g.width = 96;
         g.height = 54;
-      } else if (cfg.kind === 'MOVING') {
+      } else if (cfg.kind === 'MOVING' || Boolean(cfg.moveSpeedX)) {
         g.width = 122;
         g.height = 48;
       } else {
@@ -123,7 +147,7 @@ export class GateSystem {
       const g = items[i];
       if (!g.active) continue;
 
-      g.y += TRACK_SCROLL_SPEED * dt;
+      g.y += SCROLL_SPEED * dt;
       if (g.hitFlashTimer > 0) g.hitFlashTimer = Math.max(0, g.hitFlashTimer - dt);
       if (g.bounceScale > 1) {
         g.bounceScale = Math.max(1, g.bounceScale - dt * 2.4);
@@ -166,8 +190,6 @@ export class GateSystem {
 
         if (g.rewardWeapon) {
           ctx.setWeapon(g.rewardWeapon);
-          const wName = WEAPONS[g.rewardWeapon].name;
-          ctx.spawnFloatingText(worldX, worldY - 12, `解锁 ${wName}!`, PALETTE.yellow, 15);
         }
         if (g.rewardAffix) {
           ctx.grantAffix(g.rewardAffix);
@@ -177,8 +199,8 @@ export class GateSystem {
       return;
     }
 
-    if (!g.shootableToFlip) return;
-    if (g.flippedToBlue && g.value >= 20) return;
+    if (!isGateShootable(g)) return;
+    const flipCap = getGateFlipCap(g);
 
     g.flipProgress += dmg;
     g.hitFlashTimer = 0.06;
@@ -187,6 +209,23 @@ export class GateSystem {
     while (g.flipProgress >= g.flipHpPerStep) {
       g.flipProgress -= g.flipHpPerStep;
       this.audio.playGateTick(g.flipTickCount++);
+
+      // G7 联动跷跷板门：射击左侧红门同步为右侧联动蓝门充能 +1
+      if (g.linkedPartnerId) {
+        const items = this.pool.activeItems;
+        for (let i = 0; i < items.length; i++) {
+          const partner = items[i];
+          if (partner.active && !partner.pairLocked && partner.configId === g.linkedPartnerId) {
+            if (partner.value < 30) {
+              partner.value += 1;
+              partner.bounceScale = 1.09;
+              partner.hitFlashTimer = 0.04;
+              ctx.spawnFxBurst(projectX(partner.laneX, partner.y), partner.y, PALETTE.yellow, 2);
+            }
+            break;
+          }
+        }
+      }
 
       if (g.op === '-') {
         g.value -= 1;
@@ -206,7 +245,7 @@ export class GateSystem {
         // 每 8 步降级 ÷2 -> +12 洗白
         if (g.flipTickCount >= 8) {
           g.op = '+';
-          g.value = 12;
+          g.value = 6;
           g.kind = 'ADD';
           g.flippedToBlue = true;
           this.audio.playGateFlip();
@@ -216,8 +255,15 @@ export class GateSystem {
           ctx.triggerQuip('CLUTCH_FLIP');
         }
       } else if (g.flippedToBlue && g.op === '+') {
-        if (g.value < 20) {
+        if (g.value < flipCap) {
           g.value += 1;
+          if (g.value >= flipCap) {
+            g.value = flipCap;
+            g.flipProgress = 0;
+            ctx.spawnFxBurst(worldX, worldY, PALETTE.yellow, 10);
+            ctx.spawnFloatingText(worldX, worldY - 18, '已打满! 可穿透', PALETTE.yellow, 14);
+            break;
+          }
         }
       }
     }
@@ -286,7 +332,9 @@ export class GateSystem {
       ctx.spawnFxBurst(fxX, fxY, PALETTE.mint, 14);
       ctx.spawnFloatingText(fxX, fxY, `+${g.value} 人`, PALETTE.mint, 18);
 
-      if (
+      if (g.kind === 'SEESAW' && g.value >= g.initialValue + 4) {
+        ctx.triggerQuip('SEESAW_PRO');
+      } else if (
         missedMultSibling &&
         prevSquad * missedMultSibling.value > prevSquad + g.value
       ) {
@@ -297,9 +345,17 @@ export class GateSystem {
       const gain = next - prevSquad;
       ctx.setSquadCount(next);
       ctx.addUltCharge(12);
-      this.audio.playGateGood();
-      ctx.spawnFxBurst(fxX, fxY, PALETTE.yellow, 18);
-      ctx.spawnFloatingText(fxX, fxY, `×${g.value} (+${gain})`, PALETTE.yellow, 19);
+      if (g.kind === 'OVERLOAD') {
+        this.audio.playGateFlip();
+        ctx.triggerOverload(g.overloadDurationSec || 4.5);
+        ctx.spawnFxBurst(fxX, fxY, PALETTE.purple, 22);
+        ctx.spawnFloatingText(fxX, fxY, `高压过载 ×${g.value}!!`, PALETTE.yellow, 19);
+        ctx.triggerQuip('OVERLOAD_EAT');
+      } else {
+        this.audio.playGateGood();
+        ctx.spawnFxBurst(fxX, fxY, PALETTE.yellow, 18);
+        ctx.spawnFloatingText(fxX, fxY, `×${g.value} (+${gain})`, PALETTE.yellow, 19);
+      }
     } else if (g.op === '-' || g.op === '÷') {
       if (ctx.shieldCount > 0) {
         ctx.addShield(-1);
@@ -307,10 +363,12 @@ export class GateSystem {
         ctx.spawnFxBurst(fxX, fxY, PALETTE.mint, 12);
         ctx.spawnFloatingText(fxX, fxY, '厚脸皮抵消!', PALETTE.mint, 16);
       } else {
-        const next =
+        const rawNext =
           g.op === '-'
-            ? Math.max(1, prevSquad - g.value)
-            : Math.max(1, Math.floor(prevSquad / Math.max(2, g.value)));
+            ? prevSquad - g.value
+            : Math.floor(prevSquad / Math.max(2, g.value));
+        const rawLoss = Math.max(0, prevSquad - rawNext);
+        const next = Math.max(1, prevSquad - Math.round(rawLoss * ctx.lossMult));
         const lost = prevSquad - next;
         ctx.setSquadCount(next);
         this.audio.playGateBad();
@@ -338,13 +396,22 @@ export class GateSystem {
     const roll = Math.random();
     if (roll < 0.4) {
       const prev = ctx.squadCount;
-      ctx.setSquadCount(prev * 2);
+      ctx.setSquadCount(Math.round(prev * 1.5) + 2);
       this.audio.playGateFlip();
       ctx.spawnFxBurst(fxX, fxY, PALETTE.yellow, 22);
-      ctx.spawnFloatingText(fxX, fxY, '盲盒暴富 ×2!!', PALETTE.yellow, 19);
+      ctx.spawnFloatingText(fxX, fxY, '盲盒暴富 ×1.5!!', PALETTE.yellow, 19);
       ctx.triggerQuip('MYSTERY_JACKPOT');
     } else if (roll < 0.7) {
-      const affixes: AffixId[] = ['crit_rage', 'split', 'chill'];
+      const affixes: AffixId[] = [
+        'crit_rage',
+        'split',
+        'chill',
+        'ricochet',
+        'pierce',
+        'chain_lightning',
+        'kill_haste',
+        'vamp_shield'
+      ];
       const picked = affixes[Math.floor(Math.random() * affixes.length)];
       ctx.grantAffix(picked);
       this.audio.playGateFlip();

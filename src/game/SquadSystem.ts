@@ -8,6 +8,10 @@ export class SquadSystem {
   public leaderLaneX = 0;
   public targetLaneX = 0;
   public readonly renderUnits: SquadUnitRender[] = [];
+  /** 小队实际占地范围（相对领队），用于敌人碰撞与人数牌定位 */
+  public footprintHalfW = 14;
+  public footprintTopDy = -16;
+  public footprintBottomDy = 14;
 
   reset(): void {
     this.leaderLaneX = 0;
@@ -28,6 +32,9 @@ export class SquadSystem {
    */
   rebuildRenderUnits(squadCount: number): void {
     this.renderUnits.length = 0;
+    this.footprintHalfW = 14;
+    this.footprintTopDy = -16;
+    this.footprintBottomDy = 14;
     const count = Math.max(0, Math.floor(squadCount));
     if (count <= 0) return;
 
@@ -63,6 +70,11 @@ export class SquadSystem {
       // 确保边缘单位贴墙弹性收缩而不越出跑道
       const worldX = clamp(this.leaderLaneX + dx, -LANE_HALF_W + wallPad, LANE_HALF_W - wallPad);
       dx = worldX - this.leaderLaneX;
+
+      const unitR = tiers[i] === 10 ? 20 : tiers[i] === 5 ? 15 : 11;
+      if (Math.abs(dx) + unitR > this.footprintHalfW) this.footprintHalfW = Math.abs(dx) + unitR;
+      if (dy - unitR < this.footprintTopDy) this.footprintTopDy = dy - unitR;
+      if (dy + unitR > this.footprintBottomDy) this.footprintBottomDy = dy + unitR;
 
       this.renderUnits.push({
         dx,

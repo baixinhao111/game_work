@@ -11,3 +11,7 @@ dist/
 # Environment files
 .env
 .env.*
+art/raw/
+
+# Promo video, cover & promo artwork (keep local only)
+promo/

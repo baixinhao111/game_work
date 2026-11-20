@@ -1,25 +1,30 @@
-import { BOSSES, ENEMIES } from '../data/enemies';
-import { PALETTE } from '../data/palette';
+import { ENEMIES } from '../data/enemies';
 import type { QuipEvent } from '../data/quips';
-import type { AudioEngine } from '../engine/AudioEngine';
 import { ObjectPool } from '../engine/ObjectPool';
-import { clamp, LANE_HALF_W, PLAYER_Y, projectX, TRACK_BOTTOM_Y, TRACK_TOP_Y } from '../engine/Viewport';
-import type {
-  BossId,
-  BossProjectile,
-  BossRuntime,
-  Enemy,
-  EnemyFormation,
-  EnemyId,
-  GateConfig
-} from './types';
+import {
+  clamp,
+  LANE_HALF_W,
+  PLAYER_Y,
+  projectX,
+  SCROLL_SPEED,
+  TRACK_BOTTOM_Y,
+  TRACK_TOP_Y
+} from '../engine/Viewport';
+import type { Enemy, EnemyFormation, EnemyId, GateConfig } from './types';
+
+const LANE_LIMIT = LANE_HALF_W - 14;
 
 export interface EnemyStepContext {
   leaderLaneX: number;
   squadCount: number;
+  /** 小队占地：领队左右半宽与上下边界（屏幕 y） */
+  squadHalfW: number;
+  squadTopY: number;
+  squadBottomY: number;
   shieldCount: number;
   ultActiveTimer: number;
   invulnTimer: number;
+  overloadEnemyTimer: number;
   setInvuln: (sec: number) => void;
   consumeShieldOrSquad: (loss: number) => void;
   spawnSupportGate: (cfg: GateConfig) => void;
@@ -28,99 +33,80 @@ export interface EnemyStepContext {
   triggerShake: (mag: number, sec: number) => void;
   triggerHitstop: (sec: number) => void;
   triggerQuip: (ev: QuipEvent) => void;
+  sayQuip: (text: string) => void;
   onEnemyKilled: (beans: number, ult: number) => void;
   onBossKilled: (beans: number) => void;
 }
 
 export class EnemySystem {
   public readonly enemies: ObjectPool<Enemy>;
-  public readonly bossProjectiles: ObjectPool<BossProjectile>;
-  public readonly boss: BossRuntime;
   private nextUid = 1;
 
-  constructor(private readonly audio: AudioEngine) {
+  constructor() {
     this.enemies = new ObjectPool<Enemy>(
       () => ({
         active: false,
         uid: 0,
         configId: 'overtime_zombie',
+        behavior: 'shamble',
         laneX: 0,
         y: 0,
+        vx: 0,
         hp: 10,
         maxHp: 10,
-        speedY: 100,
+        walkSpeed: 20,
+        homing: 0,
         radius: 15,
         damageToSquad: 1,
         beansReward: 1,
         ultReward: 2,
         flashTimer: 0,
         chillTimer: 0,
+        deepChillTimer: 0,
         wobblePhase: 0,
         flankAmp: 0,
         splitsOnDeath: 0,
         rot: 0
       }),
       (e) => {
+        e.vx = 0;
         e.flashTimer = 0;
         e.chillTimer = 0;
+        e.deepChillTimer = 0;
         e.flankAmp = 0;
         e.splitsOnDeath = 0;
         e.rot = 0;
       },
-      120
+      140
     );
-
-    this.bossProjectiles = new ObjectPool<BossProjectile>(
-      () => ({
-        active: false,
-        laneX: 0,
-        y: 0,
-        vx: 0,
-        vy: 200,
-        radius: 12,
-        damage: 4,
-        color: PALETTE.red,
-        label: '铃!'
-      }),
-      (p) => {
-        p.vx = 0;
-        p.vy = 200;
-        p.radius = 12;
-        p.damage = 4;
-      },
-      60
-    );
-
-    this.boss = this.createEmptyBoss();
-  }
-
-  private createEmptyBoss(): BossRuntime {
-    return {
-      active: false,
-      id: 'monday_alarm',
-      name: '',
-      subtitle: '',
-      laneX: 0,
-      y: TRACK_TOP_Y - 50,
-      targetY: 205,
-      moveDir: 1,
-      hp: 0,
-      maxHp: 1,
-      radius: 44,
-      flashTimer: 0,
-      attackTimer: 1.5,
-      waveCount: 0,
-      summoned70: false,
-      summoned35: false,
-      ringPhase: 0
-    };
   }
 
   reset(): void {
     this.enemies.releaseAll();
-    this.bossProjectiles.releaseAll();
-    Object.assign(this.boss, this.createEmptyBoss());
     this.nextUid = 1;
+  }
+
+  private spawnOne(enemyId: EnemyId, laneX: number, y: number, hpScale: number): Enemy {
+    const cfg = ENEMIES[enemyId];
+    const e = this.enemies.acquire();
+    e.uid = this.nextUid++;
+    e.configId = enemyId;
+    e.behavior = cfg.behavior;
+    e.laneX = clamp(laneX, -LANE_LIMIT, LANE_LIMIT);
+    e.y = y;
+    e.vx = 0;
+    e.hp = Math.round(cfg.hp * hpScale);
+    e.maxHp = e.hp;
+    // 每只怪速度略有差异，避免整排“机器人齐步走”
+    e.walkSpeed = cfg.walkSpeed * (0.9 + Math.random() * 0.2);
+    e.homing = cfg.homing;
+    e.radius = cfg.radius;
+    e.damageToSquad = cfg.damageToSquad;
+    e.beansReward = cfg.beansReward;
+    e.ultReward = cfg.ultReward;
+    e.splitsOnDeath = cfg.splitsOnDeath ?? 0;
+    e.wobblePhase = Math.random() * Math.PI * 2;
+    return e;
   }
 
   spawnSwarm(
@@ -130,198 +116,173 @@ export class EnemySystem {
     hpScale: number,
     laneCenter?: number
   ): void {
-    const cfg = ENEMIES[enemyId];
-    const center = laneCenter ?? (Math.random() * 120 - 60);
+    const top = TRACK_TOP_Y - 24;
+    const jitter = (amp: number) => (Math.random() * 2 - 1) * amp;
 
-    for (let i = 0; i < count; i++) {
-      const e = this.enemies.acquire();
-      e.uid = this.nextUid++;
-      e.configId = enemyId;
-      e.hp = Math.round(cfg.hp * hpScale);
-      e.maxHp = e.hp;
-      e.speedY = cfg.speedY;
-      e.radius = cfg.radius;
-      e.damageToSquad = cfg.damageToSquad;
-      e.beansReward = cfg.beansReward;
-      e.ultReward = cfg.ultReward;
-      e.splitsOnDeath = cfg.splitsOnDeath ?? 0;
-      e.wobblePhase = i * 0.65;
+    if (formation === 'LINE') {
+      // 整排人墙：超过 7 只自动分两排交错，迫使玩家集火开路
+      const perRow = Math.min(7, count);
+      for (let i = 0; i < count; i++) {
+        const row = Math.floor(i / perRow);
+        const col = i % perRow;
+        const rowCount = Math.min(perRow, count - row * perRow);
+        const t = rowCount <= 1 ? 0.5 : col / (rowCount - 1);
+        const x = -LANE_LIMIT + 8 + t * (LANE_LIMIT * 2 - 16) + (row % 2) * 18;
+        this.spawnOne(enemyId, x, top - row * 40, hpScale);
+      }
+      return;
+    }
 
-      if (formation === 'LINE') {
-        const t = count <= 1 ? 0.5 : i / (count - 1);
-        e.laneX = -126 + t * 252;
-        e.y = TRACK_TOP_Y - 22 - (i % 2) * 18;
-      } else if (formation === 'FLANK_S') {
+    if (formation === 'FLANK_S') {
+      for (let i = 0; i < count; i++) {
         const isLeft = i % 2 === 0;
-        e.laneX = isLeft ? -105 : 105;
-        e.flankAmp = 38;
-        e.y = TRACK_TOP_Y - 20 - Math.floor(i / 2) * 30;
-      } else if (formation === 'STAGGERED_HORDE') {
-        const cols = 5;
+        const e = this.spawnOne(enemyId, isLeft ? -110 : 110, top - Math.floor(i / 2) * 42, hpScale);
+        e.flankAmp = 46;
+        e.wobblePhase = isLeft ? 0 : Math.PI;
+      }
+      return;
+    }
+
+    if (formation === 'COLUMN') {
+      const cx = laneCenter ?? jitter(90);
+      for (let i = 0; i < count; i++) {
+        this.spawnOne(enemyId, cx + jitter(6), top - i * 36, hpScale);
+      }
+      return;
+    }
+
+    if (formation === 'WEDGE') {
+      // V 字楔形，尖端朝向玩家
+      const cx = laneCenter ?? jitter(40);
+      this.spawnOne(enemyId, cx, top, hpScale);
+      for (let i = 1; i < count; i++) {
+        const rank = Math.ceil(i / 2);
+        const side = i % 2 === 0 ? 1 : -1;
+        this.spawnOne(enemyId, cx + side * rank * 26, top - rank * 26, hpScale);
+      }
+      return;
+    }
+
+    if (formation === 'STAGGERED_HORDE') {
+      // 4 列错位尸潮，只占跑道约 2/3 宽，留出一侧可绕行的缝隙
+      const cx = laneCenter ?? jitter(58);
+      const cols = 4;
+      const spacing = 50;
+      for (let i = 0; i < count; i++) {
         const col = i % cols;
         const row = Math.floor(i / cols);
-        const staggerShift = (row % 2) * 22 - 11;
-        const baseX = -114 + (col / (cols - 1)) * 228 + staggerShift;
-        e.laneX = clamp(baseX + (Math.random() * 24 - 12), -136, 136);
-        e.y = TRACK_TOP_Y - 18 - row * 28 + (Math.random() * 14 - 7);
-        e.speedY = cfg.speedY * (0.94 + Math.random() * 0.14);
-      } else {
-        const col = i % 4;
-        const row = Math.floor(i / 4);
-        e.laneX = clamp(center + (col - 1.5) * 38 + (Math.random() * 14 - 7), -136, 136);
-        e.y = TRACK_TOP_Y - 20 - row * 34 + (Math.random() * 10 - 5);
+        const stagger = (row % 2) * spacing * 0.5 - spacing * 0.25;
+        const x = cx + (col - (cols - 1) * 0.5) * spacing + stagger + jitter(8);
+        this.spawnOne(enemyId, x, top - row * 30 + jitter(6), hpScale);
       }
+      return;
+    }
+
+    // CLUSTER
+    const cx = laneCenter ?? jitter(80);
+    for (let i = 0; i < count; i++) {
+      const col = i % 4;
+      const row = Math.floor(i / 4);
+      this.spawnOne(enemyId, cx + (col - 1.5) * 34 + jitter(6), top - row * 32 + jitter(5), hpScale);
     }
   }
 
-  spawnBoss(bossId: BossId, ctx: EnemyStepContext): void {
-    const cfg = BOSSES[bossId];
-    this.boss.active = true;
-    this.boss.id = bossId;
-    this.boss.name = cfg.name;
-    this.boss.subtitle = cfg.subtitle;
-    this.boss.laneX = 0;
-    this.boss.y = TRACK_TOP_Y - 45;
-    this.boss.targetY = 205;
-    this.boss.moveDir = 1;
-    this.boss.hp = cfg.hp;
-    this.boss.maxHp = cfg.hp;
-    this.boss.radius = cfg.radius;
-    this.boss.flashTimer = 0;
-    this.boss.attackTimer = 1.4;
-    this.boss.waveCount = 0;
-    this.boss.summoned70 = false;
-    this.boss.summoned35 = false;
-    this.boss.ringPhase = 0;
-
-    ctx.triggerShake(6, 0.25);
-    ctx.triggerQuip('BOSS_SPAWN');
-  }
-
-  killEnemy(e: Enemy, ctx: EnemyStepContext): void {
+  killEnemy(e: Enemy, ctx: EnemyStepContext, giveReward = true): void {
     if (!e.active) return;
     e.active = false;
     const fxX = projectX(e.laneX, e.y);
-    const fxY = e.y;
     const cfg = ENEMIES[e.configId];
-    ctx.spawnFxBurst(fxX, fxY, cfg.color, e.configId === 'ppt_pie' ? 14 : 7);
-    ctx.onEnemyKilled(e.beansReward, e.ultReward);
+    ctx.spawnFxBurst(fxX, e.y, cfg.color, e.configId === 'ppt_pie' ? 14 : 7);
+    if (giveReward) ctx.onEnemyKilled(e.beansReward, e.ultReward);
 
-    if (e.splitsOnDeath > 0) {
+    if (giveReward && e.splitsOnDeath > 0) {
       for (let k = 0; k < e.splitsOnDeath; k++) {
-        const mini = this.enemies.acquire();
-        const miniCfg = ENEMIES.client_mini;
-        mini.uid = this.nextUid++;
-        mini.configId = 'client_mini';
-        mini.hp = miniCfg.hp;
-        mini.maxHp = miniCfg.hp;
-        mini.speedY = miniCfg.speedY;
-        mini.radius = miniCfg.radius;
-        mini.damageToSquad = miniCfg.damageToSquad;
-        mini.beansReward = miniCfg.beansReward;
-        mini.ultReward = miniCfg.ultReward;
-        mini.laneX = clamp(e.laneX + (k === 0 ? -24 : 24), -138, 138);
-        mini.y = e.y - 6;
-        mini.wobblePhase = k * 1.5;
+        const mini = this.spawnOne('client_mini', e.laneX + (k === 0 ? -24 : 24), e.y - 6, 1);
+        mini.vx = k === 0 ? -60 : 60;
       }
     }
   }
 
-  damageBoss(dmg: number, worldX: number, worldY: number, ctx: EnemyStepContext): void {
-    if (!this.boss.active) return;
-    this.boss.hp -= dmg;
-    this.boss.flashTimer = 0.06;
-
-    const hpRatio = this.boss.hp / this.boss.maxHp;
-    if (hpRatio <= 0.7 && !this.boss.summoned70) {
-      this.boss.summoned70 = true;
-      this.spawnSwarm('overtime_zombie', 14, 'STAGGERED_HORDE', 1.0);
-      ctx.spawnSupportGate({
-        id: 'boss_aid_1',
-        pairGroupId: 'boss_aid_1',
-        laneSide: Math.random() < 0.5 ? 'LEFT' : 'RIGHT',
-        kind: 'ADD',
-        initialOp: '+',
-        value: 8,
-        shootableToFlip: false
-      });
-      ctx.spawnFloatingText(worldX, worldY - 30, '闹钟贪睡召唤!', PALETTE.yellow, 15);
-    }
-
-    if (hpRatio <= 0.35 && !this.boss.summoned35) {
-      this.boss.summoned35 = true;
-      this.spawnSwarm('ddl_flame', 6, 'FLANK_S', 1.0, 0);
-      this.spawnSwarm('cc_all', 6, 'LINE', 1.0, 0);
-      ctx.spawnFloatingText(worldX, worldY - 30, '早高峰红温连响!!', PALETTE.red, 16);
-    }
-
-    if (this.boss.hp <= 0) {
-      this.boss.hp = 0;
-      this.boss.active = false;
-      this.audio.playExplosion(true);
-      ctx.triggerHitstop(0.045);
-      ctx.triggerShake(9, 0.25);
-      ctx.spawnFxBurst(worldX, worldY, PALETTE.yellow, 28);
-      ctx.spawnFxBurst(worldX, worldY, PALETTE.mint, 18);
-      ctx.onBossKilled(BOSSES[this.boss.id].beansReward);
-    }
-  }
-
-  clearAllForUltimate(ctx: EnemyStepContext): void {
+  clearAll(ctx: EnemyStepContext): void {
     const items = this.enemies.activeItems;
     for (let i = 0; i < items.length; i++) {
       const e = items[i];
       if (!e.active) continue;
+      // 大招清屏不触发甲方分裂，避免“清完屏又冒出一堆”
+      e.splitsOnDeath = 0;
       this.killEnemy(e, ctx);
     }
     this.enemies.sweepInactive();
-
-    const projs = this.bossProjectiles.activeItems;
-    for (let i = 0; i < projs.length; i++) {
-      const p = projs[i];
-      if (!p.active) continue;
-      p.active = false;
-      ctx.spawnFxBurst(projectX(p.laneX, p.y), p.y, PALETTE.mint, 4);
-    }
-    this.bossProjectiles.sweepInactive();
-
-    if (this.boss.active) {
-      this.damageBoss(220, projectX(this.boss.laneX, this.boss.y), this.boss.y, ctx);
-    }
   }
 
   step(dt: number, ctx: EnemyStepContext): void {
     const items = this.enemies.activeItems;
+    const leader = ctx.leaderLaneX;
+
     for (let i = 0; i < items.length; i++) {
       const e = items[i];
       if (!e.active) continue;
 
       if (e.flashTimer > 0) e.flashTimer = Math.max(0, e.flashTimer - dt);
       if (e.chillTimer > 0) e.chillTimer = Math.max(0, e.chillTimer - dt);
+      if (e.deepChillTimer > 0) e.deepChillTimer = Math.max(0, e.deepChillTimer - dt);
 
-      const speedMult = e.chillTimer > 0 ? 0.65 : 1.0;
-      e.y += e.speedY * speedMult * dt;
-      e.wobblePhase += dt * (e.configId === 'ddl_flame' ? 5.6 : 4.5);
-      e.rot = 0;
+      const deepChilled = e.deepChillTimer > 0;
+      const chilled = e.chillTimer > 0;
+      const chillMult = deepChilled ? 0.4 : chilled ? 0.65 : 1.0;
+      const overloadMult = ctx.overloadEnemyTimer > 0 ? 1.4 : 1.0;
+      const speedMult = chillMult * overloadMult;
+      e.wobblePhase += dt * (e.behavior === 'snake' ? 4.2 : 6.5) * speedMult;
 
-      if (e.flankAmp > 0) {
-        e.laneX = clamp(e.laneX + Math.cos(e.wobblePhase) * e.flankAmp * dt * 2.2, -138, 138);
+      // 纵向：路面滚动 + 自主冲锋
+      const scrollMult = deepChilled ? 0.68 : chilled ? 0.85 : ctx.overloadEnemyTimer > 0 ? 1.2 : 1.0;
+      e.y += (SCROLL_SPEED * scrollMult + e.walkSpeed * speedMult) * dt;
+
+      // 横向：按行为算出期望横移速度，再平滑过渡，避免瞬间折返的“抽搐感”
+      const toLeader = leader - e.laneX;
+      const engaged = e.y > TRACK_TOP_Y + 90;
+      let desiredVx = 0;
+      switch (e.behavior) {
+        case 'shamble':
+          desiredVx = engaged ? clamp(toLeader * 0.9, -e.homing, e.homing) : 0;
+          desiredVx += Math.sin(e.wobblePhase * 0.5) * 12;
+          break;
+        case 'homing':
+          desiredVx = engaged ? clamp(toLeader * 1.4, -e.homing, e.homing) : 0;
+          break;
+        case 'heavy':
+          desiredVx = clamp(toLeader * 0.3, -e.homing, e.homing);
+          break;
+        case 'snake':
+          if (e.y < PLAYER_Y - 230) {
+            desiredVx = Math.cos(e.wobblePhase) * e.flankAmp * 2.4;
+          } else {
+            desiredVx = clamp(toLeader * 3, -e.homing, e.homing);
+          }
+          break;
+        case 'march':
+        default:
+          desiredVx = 0;
       }
+      desiredVx *= speedMult;
+      e.vx += (desiredVx - e.vx) * Math.min(1, 5 * dt);
+      e.laneX = clamp(e.laneX + e.vx * dt, -LANE_LIMIT, LANE_LIMIT);
+      e.rot = clamp(e.vx / 400, -0.18, 0.18);
 
-      // 检测与领队/小队中心碰撞
-      if (Math.abs(e.y - PLAYER_Y) <= e.radius + 18 && Math.abs(e.laneX - ctx.leaderLaneX) <= e.radius + 26) {
+      // 与小队实际占地范围碰撞（不再只判领队一个点）
+      if (
+        e.y + e.radius * 0.6 >= ctx.squadTopY &&
+        e.y - e.radius * 0.6 <= ctx.squadBottomY &&
+        Math.abs(e.laneX - leader) <= ctx.squadHalfW + e.radius * 0.5
+      ) {
         if (ctx.ultActiveTimer > 0) {
           this.killEnemy(e, ctx);
           continue;
         }
-        e.active = false;
-        if (ctx.invulnTimer <= 0) {
-          ctx.setInvuln(0.35);
-          if (e.configId === 'ppt_pie') {
-            ctx.triggerQuip('PPT_HIT');
-          }
-          ctx.consumeShieldOrSquad(e.damageToSquad);
-        }
+        // 撞上即同归于尽：敌人消失、小队减员。不再有“无敌帧白嫖”，每只都算数
+        this.killEnemy(e, ctx, false);
+        if (e.configId === 'ppt_pie') ctx.triggerQuip('PPT_HIT');
+        ctx.consumeShieldOrSquad(e.damageToSquad);
         continue;
       }
 
@@ -329,92 +290,31 @@ export class EnemySystem {
         e.active = false;
       }
     }
+
+    this.separate(items);
     this.enemies.sweepInactive();
-
-    this.stepBoss(dt);
-    this.stepBossProjectiles(dt, ctx);
   }
 
-  private stepBoss(dt: number): void {
-    if (!this.boss.active) return;
-
-    if (this.boss.flashTimer > 0) {
-      this.boss.flashTimer = Math.max(0, this.boss.flashTimer - dt);
-    }
-
-    if (this.boss.y < this.boss.targetY) {
-      this.boss.y = Math.min(this.boss.targetY, this.boss.y + 120 * dt);
-    } else {
-      const patrolSpeed = this.boss.hp < this.boss.maxHp * 0.4 ? 92 : 64;
-      this.boss.laneX += patrolSpeed * this.boss.moveDir * dt;
-      if (this.boss.laneX > 92) {
-        this.boss.laneX = 92;
-        this.boss.moveDir = -1;
-      } else if (this.boss.laneX < -92) {
-        this.boss.laneX = -92;
-        this.boss.moveDir = 1;
-      }
-    }
-
-    this.boss.ringPhase += dt * (this.boss.hp < this.boss.maxHp * 0.4 ? 26 : 16);
-    this.boss.attackTimer -= dt;
-    if (this.boss.attackTimer <= 0) {
-      const enraged = this.boss.hp < this.boss.maxHp * 0.4;
-      this.boss.attackTimer = enraged ? 1.55 : 2.1;
-      this.fireBossWave();
-    }
-  }
-
-  private fireBossWave(): void {
-    this.boss.waveCount++;
-    // 轮流在左 / 中 / 右留下约 96px 宽的安全通道供玩家躲避
-    const gapModes = [-82, 0, 82];
-    const gapCenter = gapModes[this.boss.waveCount % gapModes.length];
-    const gapHalf = 48;
-
-    for (let x = -LANE_HALF_W + 24; x <= LANE_HALF_W - 24; x += 32) {
-      if (Math.abs(x - gapCenter) < gapHalf) continue;
-      const p = this.bossProjectiles.acquire();
-      p.laneX = x;
-      p.y = this.boss.y + 26;
-      p.vx = 0;
-      p.vy = 205;
-      p.radius = 11;
-      p.damage = 3;
-      p.color = PALETTE.red;
-      p.label = '07:00';
-    }
-  }
-
-  private stepBossProjectiles(dt: number, ctx: EnemyStepContext): void {
-    const items = this.bossProjectiles.activeItems;
+  /** 轻量横向排斥，防止怪物叠成一坨（n 通常 < 80，O(n²) 可接受） */
+  private separate(items: readonly Enemy[]): void {
     for (let i = 0; i < items.length; i++) {
-      const p = items[i];
-      if (!p.active) continue;
-
-      p.laneX += p.vx * dt;
-      p.y += p.vy * dt;
-
-      if (
-        Math.abs(p.y - PLAYER_Y) <= p.radius + 14 &&
-        Math.abs(p.laneX - ctx.leaderLaneX) <= p.radius + 16
-      ) {
-        p.active = false;
-        if (ctx.ultActiveTimer > 0) {
-          ctx.spawnFxBurst(projectX(p.laneX, p.y), p.y, PALETTE.mint, 5);
-          continue;
-        }
-        if (ctx.invulnTimer <= 0) {
-          ctx.setInvuln(0.35);
-          ctx.consumeShieldOrSquad(p.damage);
-        }
-        continue;
-      }
-
-      if (p.y > TRACK_BOTTOM_Y + 30) {
-        p.active = false;
+      const a = items[i];
+      if (!a.active) continue;
+      for (let j = i + 1; j < items.length; j++) {
+        const b = items[j];
+        if (!b.active) continue;
+        const minD = (a.radius + b.radius) * 0.8;
+        const dy = a.y - b.y;
+        if (dy > minD || dy < -minD) continue;
+        const dx = a.laneX - b.laneX;
+        if (dx > minD || dx < -minD) continue;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        if (dist >= minD) continue;
+        const push = (minD - dist) * 0.25;
+        const nx = dx === 0 ? (i % 2 === 0 ? 1 : -1) : dx / dist;
+        a.laneX = clamp(a.laneX + nx * push, -LANE_LIMIT, LANE_LIMIT);
+        b.laneX = clamp(b.laneX - nx * push, -LANE_LIMIT, LANE_LIMIT);
       }
     }
-    this.bossProjectiles.sweepInactive();
   }
 }
