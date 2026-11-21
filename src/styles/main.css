@@ -1455,3 +1455,35 @@ body {
 @keyframes intro-pulse {
   50% { transform: scale(1.06); }
 }
+
+/* ---------- 工作群消息：底部左侧，与大招按钮并排，不遮挡怪物进场区 ---------- */
+.hud-bottom {
+  align-items: flex-end;
+}
+.hud-bottom .quip-chat {
+  margin: 0 8px 0 0;
+  margin-right: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: calc(100% - 156px);
+  padding: 5px 8px;
+}
+.hud-bottom .quip-chat-avatar {
+  width: 26px;
+  height: 26px;
+}
+.hud-bottom .quip-chat-meta {
+  font-size: 10px;
+}
+.hud-bottom .quip-chat-time {
+  display: none;
+}
+.hud-bottom .quip-chat-text {
+  font-size: 11.5px;
+  line-height: 1.3;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

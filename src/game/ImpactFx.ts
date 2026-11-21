@@ -118,7 +118,7 @@ export class ImpactFx {
   }
 
   stamp(text: string, color: string = PALETTE.mint): void {
-    this.stampFx = { text, color, t: 0, dur: 1.1 };
+    this.stampFx = { text, color, t: 0, dur: 0.85 };
     const st = this.world.state;
     st.shakeMagnitude = Math.max(st.shakeMagnitude, 5);
     st.shakeTimer = Math.max(st.shakeTimer, 0.14);

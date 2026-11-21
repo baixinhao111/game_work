@@ -105,7 +105,7 @@ export class HordeDirector {
       // 前期轻、后期重：进度做 1.6 次方缓入，开局只刷零星几只，中后段火力起来了再上量
       const ramp = Math.pow(p, 1.6);
       interval = lerp(3.0, 1.1, ramp) / (st.isEndless ? 1 + 0.06 * wave : 1);
-      size = Math.round(lerp(3, 13, ramp) * dayScale * powerBoost);
+      size = Math.round(lerp(2, 12, ramp) * dayScale * powerBoost);
     }
     if (tutorial) size = Math.max(3, Math.round(size * 0.6));
     this.trickleTimer = interval;

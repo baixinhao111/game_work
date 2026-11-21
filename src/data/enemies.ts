@@ -10,7 +10,7 @@ export const ENEMIES: Record<EnemyId, EnemyConfig> = {
   unread_dot: {
     id: 'unread_dot',
     name: '未读红点 99+',
-    hp: 9,
+    hp: 7,
     walkSpeed: 34,
     homing: 28,
     behavior: 'homing',

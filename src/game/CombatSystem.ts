@@ -2,7 +2,7 @@ import { PALETTE } from '../data/palette';
 import { WEAPONS } from '../data/weapons';
 import type { AudioEngine } from '../engine/AudioEngine';
 import { ObjectPool } from '../engine/ObjectPool';
-import { LANE_HALF_W, PLAYER_Y, projectX, TRACK_TOP_Y } from '../engine/Viewport';
+import { ENGAGE_Y, LANE_HALF_W, PLAYER_Y, TRACK_TOP_Y, projectX } from '../engine/Viewport';
 import type { BossSystem } from './BossSystem';
 import type { EnemyStepContext, EnemySystem } from './EnemySystem';
 import type { GateSystem, GateTriggerContext } from './GateSystem';
@@ -107,7 +107,7 @@ export class CombatSystem {
     let bestD = maxDist * maxDist;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
-      if (!e.active || e.y < TRACK_TOP_Y + 10) continue;
+      if (!e.active || e.y < ENGAGE_Y) continue;
       if (exclude && exclude.has(e.uid)) continue;
       const dx = e.laneX - laneX;
       const dy = e.y - y;
@@ -339,6 +339,7 @@ export class CombatSystem {
       for (let j = 0; j < enemyList.length; j++) {
         const e = enemyList[j];
         if (!e.active || b.hitIds.has(e.uid)) continue;
+        if (e.y < ENGAGE_Y) continue; // 还没完全进入画面的怪不吃子弹
         if (Math.abs(b.y - e.y) > e.radius + 20) continue;
 
         const dx = b.laneX - e.laneX;

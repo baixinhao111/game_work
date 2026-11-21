@@ -1276,25 +1276,34 @@ export class Renderer {
     }
 
     if (fx.surgeBanner > 0) {
+      // 跑道顶端一条细窄的闪烁警报带 + 两侧泛红；不横在怪物进场的中段
       const k = fx.surgeBanner;
-      const inT = Math.min(1, (1.7 - k) / 0.15);
+      const a = Math.min(1, k / 0.3);
       const blink = Math.floor(t * 10) % 2 === 0;
       ctx.save();
-      ctx.globalAlpha = Math.min(1, k / 0.25);
-      ctx.translate(DESIGN_W * 0.5 + (1 - inT) * -DESIGN_W, 300);
-      ctx.rotate(-0.05);
-      ctx.fillStyle = PALETTE.ink;
-      ctx.fillRect(-180 + 5, -26 + 5, 360, 52);
+      ctx.globalAlpha = a;
+      const g = ctx.createLinearGradient(0, 0, 40, 0);
+      g.addColorStop(0, 'rgba(255, 51, 102, 0.45)');
+      g.addColorStop(1, 'rgba(255, 51, 102, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, TRACK_TOP_Y, 40, TRACK_BOTTOM_Y - TRACK_TOP_Y);
+      ctx.save();
+      ctx.translate(DESIGN_W, 0);
+      ctx.scale(-1, 1);
+      ctx.fillRect(0, TRACK_TOP_Y, 40, TRACK_BOTTOM_Y - TRACK_TOP_Y);
+      ctx.restore();
       ctx.fillStyle = blink ? PALETTE.red : '#C2143F';
       ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 4;
-      ctx.fillRect(-180, -26, 360, 52);
-      ctx.strokeRect(-180, -26, 360, 52);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(DESIGN_W * 0.5 - 120, TRACK_TOP_Y + 2, 240, 26, 8);
+      ctx.fill();
+      ctx.stroke();
       ctx.fillStyle = PALETTE.yellow;
-      ctx.font = '900 24px sans-serif';
+      ctx.font = '900 14px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      drawRichText(ctx, '{i:warning} 未读消息 99+ 尸潮来袭!', 0, 1);
+      drawRichText(ctx, '{i:warning} 未读 99+ 尸潮来袭!', DESIGN_W * 0.5, TRACK_TOP_Y + 15.5);
       ctx.restore();
     }
 
@@ -1305,16 +1314,16 @@ export class Renderer {
       const alpha = p > 0.75 ? (1 - p) / 0.25 : 1;
       ctx.save();
       ctx.globalAlpha = Math.max(0, alpha);
-      ctx.translate(DESIGN_W * 0.5, 420);
-      ctx.rotate(-0.1);
+      ctx.translate(DESIGN_W * 0.5, PLAYER_Y + world.squad.footprintTopDy - 78);
+      ctx.rotate(-0.08);
       ctx.scale(scale, scale);
-      ctx.font = '900 46px sans-serif';
+      ctx.font = '900 34px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineJoin = 'round';
       ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 12;
-      ctx.strokeText(sf.text, 4, 4);
+      ctx.lineWidth = 9;
+      ctx.strokeText(sf.text, 3, 3);
       ctx.strokeText(sf.text, 0, 0);
       ctx.fillStyle = sf.color;
       ctx.fillText(sf.text, 0, 0);
@@ -1679,12 +1688,14 @@ export class Renderer {
       }
     }
 
-    // 高压过载状态顶部提醒
-    if (state.phase === 'PLAYING' && state.overloadEnemyTimer > 0) {
+    // 底部状态带（小队脚下）：高压过载计时 / 连杀；拾取横幅出现时让位
+    const statusY = 742;
+    const bannerOn = !!state.banner;
+    if (state.phase === 'PLAYING' && state.overloadEnemyTimer > 0 && !bannerOn) {
       this.drawSticker(
         ctx,
-        DESIGN_W * 0.5,
-        122,
+        100,
+        statusY,
         `{i:bolt} 高压过载 · 怪物狂飙 ${state.overloadEnemyTimer.toFixed(1)}s`,
         PALETTE.purple,
         PALETTE.yellow,
@@ -1693,10 +1704,10 @@ export class Renderer {
     }
 
     // 实时连杀贴纸徽章（放在顶部工作群通知与 Boss 血条下方，避免遮挡）
-    if (state.phase === 'PLAYING' && state.comboCount >= 5) {
+    if (state.phase === 'PLAYING' && state.comboCount >= 5 && !bannerOn) {
       const pop = 1 + Math.min(0.15, (state.comboTimer / 2.4) * 0.12);
       ctx.save();
-      ctx.translate(DESIGN_W - 62, 198);
+      ctx.translate(DESIGN_W - 62, statusY);
       ctx.rotate(0.06);
       ctx.scale(pop, pop);
 
@@ -1787,8 +1798,8 @@ export class Renderer {
       const scale = 0.6 + 0.4 * (1 - Math.pow(1 - inT, 3)) + (inT < 1 ? 0 : 0);
       ctx.save();
       ctx.globalAlpha = outA;
-      ctx.translate(DESIGN_W * 0.5, 268);
-      ctx.rotate(-0.03);
+      ctx.translate(DESIGN_W * 0.5, 734);
+      ctx.rotate(-0.02);
       ctx.scale(scale, scale);
       ctx.fillStyle = PALETTE.ink;
       ctx.beginPath();

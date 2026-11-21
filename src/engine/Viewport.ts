@@ -7,6 +7,8 @@ export const LANE_HALF_W = 160;
 export const LEADER_MAX_X = 142;
 /** 跑道（门、路面刻度）向玩家滚动的速度 px/s */
 export const SCROLL_SPEED = 136;
+/** 开火线：敌人越过这条线（完全淡入画面）后才能被子弹命中，保证每只怪都先被看见再倒下 */
+export const ENGAGE_Y = TRACK_TOP_Y + 28;
 
 export function clamp(val: number, min: number, max: number): number {
   return val < min ? min : val > max ? max : val;
