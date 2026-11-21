@@ -390,7 +390,7 @@ export class Renderer {
       }
 
       if (g.kind === 'SUPPLY_CRATE') {
-        this.drawCrateGate(ctx, g, sx, g.y, s, world.state.elapsedSec);
+        this.drawCrateGate(ctx, g, sx, g.y, s, world.state.elapsedSec, !world.state.isEndless);
       } else {
         this.drawMathGate(ctx, g, sx, g.y, s, world.state.elapsedSec);
       }
@@ -435,7 +435,8 @@ export class Renderer {
     sx: number,
     sy: number,
     s: number,
-    timeSec: number
+    timeSec: number,
+    threeChoice = false
   ): void {
     const sp = this.sprites.get('propCrate');
     const drawImg = g.hitFlashTimer > 0 ? sp.flashCanvas : sp.canvas;
@@ -479,7 +480,11 @@ export class Renderer {
     // 顶部类型徽章：明确区分「🔄 换枪」还是「✨ +词条 · 不换枪」
     let pillText = '';
     let pillColor: string = PALETTE.yellow;
-    if (g.rewardWeapon) {
+    if (threeChoice) {
+      // 主线：打爆后三选一（关卡设计的奖励是其中一张）
+      pillText = '{i:box} 打爆三选一';
+      pillColor = PALETTE.yellow;
+    } else if (g.rewardWeapon) {
       pillText = `{i:swap} 换枪 · ${WEAPONS[g.rewardWeapon].traitBadge}`;
       pillColor = PALETTE.yellow;
     } else if (g.rewardAffix) {
@@ -1559,10 +1564,10 @@ export class Renderer {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = '900 19px sans-serif';
-      drawRichText(ctx, bn.title, 6, -11);
+      drawRichText(ctx, bn.title, 6, -11, { maxWidth: 270 });
       ctx.fillStyle = '#4A4F66';
       ctx.font = '800 12px sans-serif';
-      ctx.fillText(bn.sub, 6, 15);
+      ctx.fillText(bn.sub, 6, 15, 270);
       ctx.restore();
     }
 

@@ -65,6 +65,71 @@ export class EndlessDirector {
     ];
   }
 
+  /**
+   * 主线补给箱三选一：第 1 张固定是关卡设计的奖励（保持关卡节奏），
+   * 其余从通用池里补齐，且尽量包含一张能凑成化学反应的牌。
+   */
+  static generateCrateUpgrades(
+    activeWeapon: WeaponId,
+    affixes: Record<AffixId, number>,
+    designed: { weapon?: WeaponId; affix?: AffixId }
+  ): UpgradeOption[] {
+    const out: UpgradeOption[] = [];
+    const weapon = designed.weapon && designed.weapon !== activeWeapon ? designed.weapon : undefined;
+    const affix = designed.affix;
+    if (weapon && affix) {
+      const w = WEAPONS[weapon];
+      const a = AFFIXES[affix];
+      const syn = findSynergyForChoice(activeWeapon, affixes, weapon, affix);
+      out.push({
+        id: `crate_combo_${weapon}_${affix}`,
+        kind: 'WEAPON',
+        title: `换装+词条 · ${w.shortTag} + ${a.name}`,
+        desc: `${w.desc}；${a.desc}`,
+        color: w.color,
+        weaponId: weapon,
+        affixId: affix,
+        synergyTitle: syn ? `激活「${syn.name}」` : undefined
+      });
+    } else if (weapon) {
+      const w = WEAPONS[weapon];
+      const syn = findSynergyForChoice(activeWeapon, affixes, weapon, undefined);
+      out.push({
+        id: `crate_w_${weapon}`,
+        kind: 'WEAPON',
+        title: `换装 · ${w.name} [${w.traitBadge}]`,
+        desc: w.desc,
+        color: w.color,
+        weaponId: weapon,
+        synergyTitle: syn ? `激活「${syn.name}」` : undefined
+      });
+    } else if (affix) {
+      const a = AFFIXES[affix];
+      const syn = findSynergyForChoice(activeWeapon, affixes, undefined, affix);
+      out.push({
+        id: `crate_a_${affix}`,
+        kind: 'AFFIX',
+        title: `词条 · ${a.name}`,
+        desc: a.desc,
+        color: a.color,
+        affixId: affix,
+        synergyTitle: syn ? `激活「${syn.name}」` : undefined
+      });
+    }
+
+    const taken = (o: UpgradeOption) =>
+      out.some((x) => (o.weaponId && x.weaponId === o.weaponId) || (o.affixId && x.affixId === o.affixId) || x.kind === o.kind && o.kind === 'SQUAD_BOOST');
+    // 多抽几轮通用选项，优先放进能触发化学反应的
+    const pool: UpgradeOption[] = [];
+    for (let i = 0; i < 4; i++) pool.push(...this.generateUpgrades(activeWeapon, affixes));
+    pool.sort((a, b) => Number(Boolean(b.synergyTitle)) - Number(Boolean(a.synergyTitle)));
+    for (const o of pool) {
+      if (out.length >= 3) break;
+      if (!taken(o)) out.push({ ...o, id: `crate_${o.id}` });
+    }
+    return out;
+  }
+
   static generateUpgrades(activeWeapon: WeaponId, affixes: Record<AffixId, number>): UpgradeOption[] {
     const options: UpgradeOption[] = [];
 

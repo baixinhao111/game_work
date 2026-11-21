@@ -310,8 +310,18 @@ export class UIController {
   }
 
   private renderUpgrades(state: GameState): void {
-    const bossId = EndlessDirector.getBossForWave(state.endlessWave);
-    this.upgradeWaveTag.textContent = `第 ${state.endlessWave} 波「${BOSSES[bossId].name}」已击碎！`;
+    const title = document.getElementById('upgrade-title')!;
+    const desc = document.getElementById('upgrade-desc')!;
+    if (state.upgradeSource === 'CRATE') {
+      this.upgradeWaveTag.innerHTML = richHtml('{i:box} 空投补给到货！');
+      title.textContent = '三选一 · 挑件摸鱼装备';
+      desc.textContent = '带「激活」标记的能凑出化学反应，火力直接质变！';
+    } else {
+      const bossId = EndlessDirector.getBossForWave(state.endlessWave);
+      this.upgradeWaveTag.textContent = `第 ${state.endlessWave} 波「${BOSSES[bossId].name}」已击碎！`;
+      title.textContent = '选择你的加班外挂';
+      desc.textContent = '选完立刻迎战下一波更凶猛的加班潮！';
+    }
     this.upgradeList.innerHTML = state.pendingUpgrades
       .map(
         (u, idx) => `<button type="button" class="upgrade-card" data-upidx="${idx}">

@@ -412,6 +412,8 @@ export interface GameState {
   affixes: Record<AffixId, number>;
   synergies: SynergyId[];
   pendingUpgrades: UpgradeOption[];
+  /** 三选一来源：无尽 Boss 后 / 主线补给箱 */
+  upgradeSource: 'ENDLESS_BOSS' | 'CRATE';
   newlyUnlockedBadges: string[];
   boss: BossRuntime;
   bossBannerTimer: number;

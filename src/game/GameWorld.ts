@@ -153,6 +153,7 @@ export class GameWorld {
       },
       synergies: [],
       pendingUpgrades: [],
+      upgradeSource: 'ENDLESS_BOSS',
       newlyUnlockedBadges: [],
       boss: this.bosses.boss,
       bossBannerTimer: 0,
@@ -251,7 +252,14 @@ export class GameWorld {
     if (!opt) return;
 
     this.state.pendingUpgrades = [];
-    if (opt.kind === 'WEAPON' && opt.weaponId) {
+    if (opt.kind === 'WEAPON' && opt.weaponId && opt.affixId) {
+      // 补给箱组合牌：换武器 + 词条
+      this.state.activeWeapon = opt.weaponId;
+      this.state.affixes[opt.affixId] = (this.state.affixes[opt.affixId] || 0) + 1;
+      const w = WEAPONS[opt.weaponId];
+      const a = AFFIXES[opt.affixId];
+      this.showBanner(`{i:swap} ${w.shortTag} + {i:sparkle} ${a.name}`, a.desc, PALETTE.yellow);
+    } else if (opt.kind === 'WEAPON' && opt.weaponId) {
       this.state.activeWeapon = opt.weaponId;
       const w = WEAPONS[opt.weaponId];
       this.showBanner(`{i:swap} 换装 · ${w.name} (${w.traitBadge})`, w.desc, PALETTE.yellow);
@@ -267,6 +275,14 @@ export class GameWorld {
     }
 
     this.syncSynergies();
+
+    // 主线补给箱：选完直接回到战斗
+    if (this.state.upgradeSource === 'CRATE') {
+      this.state.phase = 'PLAYING';
+      this.quips.trigger('WEAPON_UPGRADE');
+      this.uiCallbacks.onPhaseChange('PLAYING', this.state, this.save);
+      return;
+    }
 
     // 开启下一波无尽加班
     this.state.endlessWave += 1;
@@ -514,6 +530,18 @@ export class GameWorld {
       addUltCharge: (delta) => {
         this.state.ultCharge = clamp(this.state.ultCharge + delta, 0, 100);
       },
+      openCrate: (reward) => {
+        // 无尽模式保持固定掉落（它在 Boss 后已有三选一），只有主线补给箱弹三选一
+        if (this.state.isEndless || this.state.phase !== 'PLAYING') return false;
+        const options = EndlessDirector.generateCrateUpgrades(this.state.activeWeapon, this.state.affixes, reward);
+        if (options.length === 0) return false;
+        this.state.pendingUpgrades = options;
+        this.state.upgradeSource = 'CRATE';
+        this.state.phase = 'UPGRADE_PICK';
+        this.audio.playGateFlip();
+        this.uiCallbacks.onPhaseChange('UPGRADE_PICK', this.state, this.save);
+        return true;
+      },
       setWeapon: (weaponId) => {
         this.state.activeWeapon = weaponId;
         const w = WEAPONS[weaponId];
@@ -631,6 +659,7 @@ export class GameWorld {
             this.state.activeWeapon,
             this.state.affixes
           );
+          this.state.upgradeSource = 'ENDLESS_BOSS';
           this.state.phase = 'UPGRADE_PICK';
           this.audio.playVictory();
           this.uiCallbacks.onPhaseChange('UPGRADE_PICK', this.state, this.save);
