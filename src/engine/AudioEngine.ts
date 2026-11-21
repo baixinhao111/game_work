@@ -131,6 +131,36 @@ export class AudioEngine {
     this.playTone(130, 48, 0.14, 'sine', 0.13);
   }
 
+  /** Boss 出招音效：每种招式一个声音，让玩家「听」得出下一波是什么 */
+  playBossShot(kind: 'ring' | 'fan' | 'charge' | 'whistle' | 'thud' | 'zap'): void {
+    if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+    const now = this.ctx.currentTime;
+    switch (kind) {
+      case 'ring':
+        // 闹铃颤音
+        for (let i = 0; i < 6; i++) {
+          this.playToneAt(now + i * 0.035, i % 2 ? 2093 : 1568, i % 2 ? 2093 : 1568, 0.05, 'square', 0.035);
+        }
+        break;
+      case 'fan':
+        for (let i = 0; i < 3; i++) this.playToneAt(now + i * 0.045, 980, 320, 0.09, 'sawtooth', 0.04);
+        break;
+      case 'charge':
+        this.playToneAt(now, 220, 880, 0.55, 'sine', 0.05);
+        this.playToneAt(now, 223, 884, 0.55, 'triangle', 0.03);
+        break;
+      case 'zap':
+        this.playNoise(0.3, 5200, 0.06);
+        this.playToneAt(now, 140, 120, 0.3, 'sawtooth', 0.06);
+        break;
+      case 'whistle':
+        this.playToneAt(now, 1900, 520, 1.0, 'sine', 0.035);
+        break;
+      default:
+        this.playToneAt(now, 110, 62, 0.4, 'sawtooth', 0.07);
+    }
+  }
+
   /** 击杀里程碑：上行三连音 */
   playMilestone(): void {
     if (this.muted || !this.ctx || this.ctx.state !== 'running') return;

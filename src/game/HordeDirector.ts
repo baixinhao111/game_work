@@ -89,6 +89,8 @@ export class HordeDirector {
     }
 
     // —— 持续补刷 ——
+    // Boss 登场前最后一段不再补刷，让场地清空、给 Boss 登场留舞台
+    if (!bossOn && p > 0.9) return;
     this.trickleTimer -= dt;
     if (this.trickleTimer > 0) return;
     if (E.enemies.activeCount >= MAX_ON_FIELD) {

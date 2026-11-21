@@ -37,6 +37,12 @@ export interface EnemyStepContext {
   onEnemyKilled: (beans: number, ult: number) => void;
   /** 敌人死亡表现（墨渍、爆开等）；byPlayer=false 表示撞上小队同归于尽 */
   onEnemyDied?: (e: Enemy, byPlayer: boolean) => void;
+  /** 屏幕白闪 */
+  flashScreen?: (sec: number) => void;
+  /** 爆炸冲击波（屏幕坐标） */
+  spawnBlast?: (x: number, y: number, radius: number, color: string) => void;
+  /** 地面焦痕 */
+  spawnScorch?: (x: number, y: number, size: number) => void;
   onBossKilled: (beans: number) => void;
 }
 

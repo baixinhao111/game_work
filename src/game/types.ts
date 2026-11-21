@@ -281,6 +281,9 @@ export interface Gate extends Poolable {
   bounceScale: number;
 }
 
+/** Boss 弹幕造型：每个 Boss 一种，避免和红色炮灰混淆 */
+export type BossShotKind = 'bellwave' | 'slide' | 'note' | 'fireball' | 'coin';
+
 export interface BossProjectile extends Poolable {
   laneX: number;
   y: number;
@@ -293,6 +296,11 @@ export interface BossProjectile extends Poolable {
   pctDamage: number;
   color: string;
   label: string;
+  kind: BossShotKind;
+  /** 造型变体（便利贴颜色等） */
+  variant: number;
+  rot: number;
+  age: number;
 }
 
 /** Boss 地面技能：竖向激光柱 / 点名红圈炸弹 */
@@ -368,6 +376,12 @@ export interface BossRuntime {
   slamTimer: number;
   ringPhase: number;
   age: number;
+  /** 出招瞬间的枪口闪光 / 后坐剩余时间 */
+  fireFlash: number;
+  /** 死亡演出剩余时间（>0 时 Boss 不再受伤也不再攻击） */
+  dying: number;
+  /** 是否已经落地（用于登场震屏） */
+  landed: boolean;
 }
 
 export interface SquadUnitRender {

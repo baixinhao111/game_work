@@ -24,6 +24,15 @@ export interface DeathPop {
   big: boolean;
 }
 
+export interface Blast {
+  x: number;
+  y: number;
+  r: number;
+  color: string;
+  t: number;
+  dur: number;
+}
+
 export interface FxStamp {
   text: string;
   color: string;
@@ -43,6 +52,7 @@ const MILESTONES = [50, 100, 200, 300, 500, 800];
 export class ImpactFx {
   readonly decals: Decal[] = [];
   readonly pops: DeathPop[] = [];
+  readonly blasts: Blast[] = [];
   stampFx: FxStamp | null = null;
   /** 屏幕白闪剩余时间 */
   flash = 0;
@@ -57,6 +67,7 @@ export class ImpactFx {
   reset(): void {
     this.decals.length = 0;
     this.pops.length = 0;
+    this.blasts.length = 0;
     this.stampFx = null;
     this.flash = 0;
     this.surgeBanner = 0;
@@ -107,6 +118,22 @@ export class ImpactFx {
     }
   }
 
+  /** 爆炸冲击波：Boss 炸弹、登场落地、死亡连环爆 */
+  addBlast(x: number, y: number, r: number, color: string): void {
+    if (this.blasts.length >= 24) this.blasts.shift();
+    this.blasts.push({ x, y, r, color, t: 0, dur: 0.42 });
+  }
+
+  /** 地面焦痕（深色墨渍，跟随路面滚动淡出） */
+  addScorch(x: number, y: number, size: number): void {
+    const decal: Decal = { x, y, color: '#2A1620', size, rot: (Math.random() - 0.5) * 0.4, variant: Math.floor(Math.random() * 3), life: 0, maxLife: 3.5 };
+    if (this.decals.length < MAX_DECALS) this.decals.push(decal);
+    else {
+      this.decals[this.decalCursor] = decal;
+      this.decalCursor = (this.decalCursor + 1) % MAX_DECALS;
+    }
+  }
+
   onKillCount(kills: number): void {
     while (this.nextMilestone < MILESTONES.length && kills >= MILESTONES[this.nextMilestone]) {
       const n = MILESTONES[this.nextMilestone];
@@ -151,6 +178,11 @@ export class ImpactFx {
       const d = this.decals[i];
       d.life += dt;
       d.y += scroll;
+    }
+    for (let i = this.blasts.length - 1; i >= 0; i--) {
+      const b = this.blasts[i];
+      b.t += dt;
+      if (b.t >= b.dur) this.blasts.splice(i, 1);
     }
     for (let i = this.pops.length - 1; i >= 0; i--) {
       const p = this.pops[i];

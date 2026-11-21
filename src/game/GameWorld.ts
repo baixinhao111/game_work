@@ -374,6 +374,8 @@ export class GameWorld {
 
   step(dt: number): void {
     if (this.state.phase !== 'PLAYING') return;
+    // Boss 死亡演出：整体慢动作
+    if (this.bosses.boss.active && this.bosses.boss.dying > 0) dt *= 0.45;
 
     this.quips.step(dt);
     this.tutorial.update(dt, this);
@@ -645,6 +647,15 @@ export class GameWorld {
       },
       onGateFlipped: () => {
         this.state.stats.gatesFlipped += 1;
+      },
+      flashScreen: (sec) => {
+        this.fx.flash = Math.max(this.fx.flash, sec);
+      },
+      spawnBlast: (x, y, r, color) => {
+        this.fx.addBlast(x, y, r, color);
+      },
+      spawnScorch: (x, y, size) => {
+        this.fx.addScorch(x, y, size);
       },
       onEnemyDied: (e, byPlayer) => {
         this.fx.onEnemyDied(e, byPlayer);

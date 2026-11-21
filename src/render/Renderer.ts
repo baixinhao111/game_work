@@ -16,11 +16,20 @@ import {
 } from '../engine/Viewport';
 import { getGateFlipCap, isGateShootable } from '../game/GateSystem';
 import type { GameWorld } from '../game/GameWorld';
-import type { BossRuntime, Enemy, Gate } from '../game/types';
+import type { BossRuntime, BossShotKind, Enemy, Gate } from '../game/types';
 import { ensureCanvasRoundRect } from './canvasCompat';
 import type { CachedSprite, SpriteCache } from './SpriteCache';
 
 const CLOCK_MARKS = ['09:00', '11:00', '13:00', '15:00', '17:30', '18:00'];
+/** Boss 主题色：蓄力光晕、出招闪光、弹道预告 */
+const BOSS_ACCENT = {
+  alarm: '#FFE600',
+  projector: '#7FF7FF',
+  hydra: '#C77DFF',
+  server: '#FF8A3D',
+  kpi: '#FFC93C'
+} as const;
+
 const BOSS_SPRITES = {
   alarm: 'bossAlarm',
   projector: 'bossProjector',
@@ -268,10 +277,12 @@ export class Renderer {
     this.drawBossHazards(ctx, world);
   }
 
-  /** Boss 地面技能：激光柱预警/激活、点名红圈炸弹 */
+  /** Boss 地面技能：激光柱（细线蓄能 → 三层光柱）/ 炸弹（瞄准框 + 抛物线落弹） */
   private drawBossHazards(ctx: CanvasRenderingContext2D, world: GameWorld): void {
     const hazards = world.bosses.hazards.activeItems;
+    const boss = world.bosses.boss;
     const t = world.state.elapsedSec;
+    const beamColor = boss.style === 'projector' ? '#7FF7FF' : boss.style === 'kpi' ? '#FFC93C' : PALETTE.red;
     for (let i = 0; i < hazards.length; i++) {
       const h = hazards[i];
       if (!h.active) continue;
@@ -279,39 +290,77 @@ export class Renderer {
       const prog = warn ? 1 - h.warnTimer / h.warnMax : 1;
 
       if (h.kind === 'laser') {
-        const topY = TRACK_TOP_Y + 40;
+        const topY = TRACK_TOP_Y + 6;
         const botY = TRACK_BOTTOM_Y;
         const xTop = projectX(h.laneX, topY);
         const xBot = projectX(h.laneX, botY);
-        const wTop = h.halfWidth * depthScale(topY);
-        const wBot = h.halfWidth * depthScale(botY);
+        const column = (halfW: number) => {
+          const wt = halfW * depthScale(topY);
+          const wb = halfW * depthScale(botY);
+          ctx.beginPath();
+          ctx.moveTo(xTop - wt, topY);
+          ctx.lineTo(xTop + wt, topY);
+          ctx.lineTo(xBot + wb, botY);
+          ctx.lineTo(xBot - wb, botY);
+          ctx.closePath();
+        };
         ctx.save();
         if (warn) {
-          ctx.globalAlpha = 0.18 + 0.22 * prog + (Math.floor(t * 14) % 2 === 0 ? 0.08 : 0);
-          ctx.fillStyle = PALETTE.red;
-        } else {
-          ctx.globalAlpha = 0.85;
+          // 蓄能：危险区淡红底 + 中央细线由细变粗、越来越快地闪
+          ctx.globalAlpha = 0.1 + 0.16 * prog;
+          ctx.fillStyle = beamColor;
+          column(h.halfWidth);
+          ctx.fill();
+          const flick = Math.floor(t * (8 + prog * 22)) % 2 === 0;
+          ctx.globalAlpha = flick ? 0.95 : 0.45;
+          ctx.strokeStyle = beamColor;
+          ctx.lineWidth = 1.5 + prog * 4;
+          ctx.setLineDash([12, 8]);
+          ctx.lineDashOffset = -t * 120;
+          ctx.beginPath();
+          ctx.moveTo(xTop, topY);
+          ctx.lineTo(xBot, botY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // 顶端蓄能光球
+          ctx.globalAlpha = 0.6 + 0.4 * prog;
+          ctx.fillStyle = beamColor;
+          ctx.beginPath();
+          ctx.arc(xTop, topY + 6, 5 + prog * 10, 0, Math.PI * 2);
+          ctx.fill();
           ctx.fillStyle = PALETTE.paper;
-        }
-        ctx.beginPath();
-        ctx.moveTo(xTop - wTop, topY);
-        ctx.lineTo(xTop + wTop, topY);
-        ctx.lineTo(xBot + wBot, botY);
-        ctx.lineTo(xBot - wBot, botY);
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = PALETTE.red;
-        ctx.lineWidth = warn ? 2 : 4;
-        ctx.setLineDash(warn ? [8, 6] : []);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        if (warn) {
-          ctx.fillStyle = PALETTE.red;
-          ctx.font = '900 12px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('站会激光!', xBot, PLAYER_Y - 70);
+          ctx.beginPath();
+          ctx.arc(xTop, topY + 6, 2 + prog * 5, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // 发射：外发光 + 主光柱 + 白色内芯（宽度抖动）
+          const life = h.activeTimer;
+          const jitter = 0.85 + 0.15 * Math.sin(t * 90 + i);
+          ctx.globalAlpha = 0.28;
+          ctx.fillStyle = beamColor;
+          column(h.halfWidth * 1.9 * jitter);
+          ctx.fill();
+          ctx.globalAlpha = 0.9;
+          column(h.halfWidth * jitter);
+          ctx.fill();
+          ctx.strokeStyle = PALETTE.ink;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = PALETTE.paper;
+          column(h.halfWidth * 0.36 * jitter);
+          ctx.fill();
+          // 顶端光斑 + 底部冲击圈
+          ctx.fillStyle = PALETTE.paper;
+          ctx.beginPath();
+          ctx.arc(xTop, topY + 4, 14 * jitter, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = Math.min(1, life / 0.2);
+          ctx.strokeStyle = beamColor;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.ellipse(xBot, PLAYER_Y + 18, h.halfWidth * 1.6 + (1 - life / 0.42) * 30, 10, 0, 0, Math.PI * 2);
+          ctx.stroke();
         }
         ctx.restore();
       } else {
@@ -319,25 +368,64 @@ export class Renderer {
         const s = depthScale(h.y);
         const r = h.halfWidth * s;
         ctx.save();
-        ctx.fillStyle = warn ? `rgba(255, 51, 102, ${(0.15 + 0.25 * prog).toFixed(3)})` : 'rgba(255, 230, 0, 0.75)';
-        ctx.beginPath();
-        ctx.ellipse(x, h.y + 6, r, r * 0.42, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = PALETTE.red;
-        ctx.lineWidth = 3;
-        ctx.stroke();
         if (warn) {
-          // 收缩倒计时圈
-          ctx.strokeStyle = PALETTE.yellow;
+          // 落点：红色危险区 + 收缩圈 + 旋转瞄准框
+          ctx.fillStyle = `rgba(255, 51, 102, ${(0.12 + 0.22 * prog).toFixed(3)})`;
+          ctx.beginPath();
+          ctx.ellipse(x, h.y + 6, r, r * 0.42, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = PALETTE.red;
           ctx.lineWidth = 2.5;
+          ctx.stroke();
+          ctx.strokeStyle = PALETTE.yellow;
+          ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.ellipse(x, h.y + 6, r * (1 - prog * 0.85), r * 0.42 * (1 - prog * 0.85), 0, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.fillStyle = PALETTE.paper;
-          ctx.font = '900 12px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('改稿炸弹', x, h.y - 18);
+          ctx.translate(x, h.y + 6);
+          ctx.scale(1, 0.42);
+          ctx.rotate(t * 3);
+          ctx.strokeStyle = PALETTE.red;
+          ctx.lineWidth = 4;
+          for (let k = 0; k < 4; k++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath();
+            ctx.arc(0, 0, r + 8, -0.35, 0.35);
+            ctx.stroke();
+          }
+          ctx.restore();
+          ctx.save();
+          // 炸弹从 Boss 处抛物线砸下来
+          const ease = prog * prog;
+          const sx = projectX(boss.active ? boss.laneX : h.laneX, boss.active ? boss.y : TRACK_TOP_Y);
+          const sy = boss.active ? boss.y + 20 : TRACK_TOP_Y;
+          const bxp = sx + (x - sx) * ease;
+          const byp = sy + (h.y - sy) * ease - Math.sin(prog * Math.PI) * 90;
+          const bs = 10 + 6 * ease;
+          ctx.fillStyle = PALETTE.ink;
+          ctx.beginPath();
+          ctx.arc(bxp, byp, bs, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#4A4F66';
+          ctx.beginPath();
+          ctx.arc(bxp - bs * 0.35, byp - bs * 0.35, bs * 0.35, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = PALETTE.coffee;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(bxp + bs * 0.5, byp - bs * 0.7);
+          ctx.quadraticCurveTo(bxp + bs, byp - bs * 1.4, bxp + bs * 0.6, byp - bs * 1.8);
+          ctx.stroke();
+          ctx.fillStyle = Math.floor(t * 20) % 2 === 0 ? PALETTE.yellow : PALETTE.red;
+          ctx.beginPath();
+          ctx.arc(bxp + bs * 0.6, byp - bs * 1.8, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.globalAlpha = Math.min(1, h.activeTimer / 0.18);
+          ctx.fillStyle = PALETTE.yellow;
+          ctx.beginPath();
+          ctx.ellipse(x, h.y + 6, r * 1.2, r * 0.55, 0, 0, Math.PI * 2);
+          ctx.fill();
         }
         ctx.restore();
       }
@@ -846,10 +934,64 @@ export class Renderer {
       const t = world.state.elapsedSec;
       const vib = Math.sin(boss.ringPhase) * (boss.enraged ? 4.2 : 2.2);
       const pulse = 1 + Math.sin(t * (boss.enraged ? 12 : 6)) * 0.03;
+      const accent = BOSS_ACCENT[boss.style];
+      const WIND = 0.4;
+      const windK =
+        boss.dying <= 0 && boss.landed && boss.shieldTimer <= 0 && boss.attackTimer < WIND
+          ? 1 - Math.max(0, boss.attackTimer) / WIND
+          : 0;
+      const fireK = boss.fireFlash / 0.22;
+      const dieShakeX = boss.dying > 0 ? (Math.random() - 0.5) * 12 : 0;
+      const dieShakeY = boss.dying > 0 ? (Math.random() - 0.5) * 8 : 0;
+
+      // 蓄力：背后主题色光晕 + 向中心收拢的火星
+      if (windK > 0) {
+        const gr = boss.radius * (1.3 + 0.6 * windK);
+        const g = ctx.createRadialGradient(bx, boss.y, boss.radius * 0.3, bx, boss.y, gr);
+        g.addColorStop(0, accent + 'CC');
+        g.addColorStop(1, accent + '00');
+        ctx.globalAlpha = 0.25 + 0.6 * windK;
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(bx, boss.y, gr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2 + t * 4;
+          const rr = boss.radius * (2.1 - 1.4 * windK);
+          ctx.fillStyle = k % 2 ? accent : PALETTE.paper;
+          ctx.beginPath();
+          ctx.arc(bx + Math.cos(a) * rr, boss.y + Math.sin(a) * rr * 0.7, 3 + 3 * windK, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // 扇形弹：提前画出虚线弹道
+        const next = world.bosses.peekNextMove();
+        if (next && next.startsWith('fan')) {
+          const count = next === 'fan3' ? 3 : next === 'fan5' ? 5 : 7;
+          const spread = next === 'fan3' ? 0.42 : next === 'fan5' ? 0.62 : 0.86;
+          const base = Math.atan2(world.squad.leaderLaneX - boss.laneX, PLAYER_Y - boss.y);
+          ctx.strokeStyle = accent;
+          ctx.globalAlpha = 0.25 + 0.5 * windK;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([8, 10]);
+          ctx.lineDashOffset = -t * 80;
+          for (let k = 0; k < count; k++) {
+            const a = base - spread / 2 + (k / (count - 1)) * spread;
+            const L = 560;
+            ctx.beginPath();
+            ctx.moveTo(bx, boss.y + 30);
+            ctx.lineTo(projectX(boss.laneX + Math.sin(a) * L, boss.y + Math.cos(a) * L), boss.y + Math.cos(a) * L);
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+        }
+      }
 
       ctx.save();
-      ctx.translate(bx + vib, boss.y);
-      ctx.scale(pulse, 2 - pulse);
+      ctx.translate(bx + vib + dieShakeX, boss.y - fireK * 9 + dieShakeY);
+      const swell = 1 + 0.07 * windK + (boss.dying > 0 ? 0.06 : 0);
+      ctx.scale(pulse * swell, (2 - pulse) * swell);
       const sp = this.sprites.get(BOSS_SPRITES[boss.style]);
       if (sp.loaded || boss.style === 'alarm') {
         const img =
@@ -864,6 +1006,28 @@ export class Renderer {
         this.drawVectorBoss(ctx, boss, t);
       }
       ctx.restore();
+
+      // 出招闪光：Boss 下方炸开一圈星芒
+      if (fireK > 0) {
+        const mx = bx;
+        const my = boss.y + boss.radius * 0.75;
+        const r = 14 + 26 * (1 - fireK);
+        ctx.globalAlpha = fireK;
+        ctx.fillStyle = PALETTE.paper;
+        ctx.beginPath();
+        for (let k = 0; k < 16; k++) {
+          const a = (k / 16) * Math.PI * 2;
+          const rr = k % 2 === 0 ? r : r * 0.45;
+          ctx.lineTo(mx + Math.cos(a) * rr, my + Math.sin(a) * rr);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = accent;
+        ctx.beginPath();
+        ctx.arc(mx, my, r * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
 
       // 开会免伤护盾
       if (boss.shieldTimer > 0) {
@@ -1161,6 +1325,146 @@ export class Renderer {
     }
   }
 
+  /** Boss 弹幕贴图缓存：本体 + 外发光，按造型和颜色预渲染一次 */
+  private readonly shotCache = new Map<string, { body: HTMLCanvasElement; glow: HTMLCanvasElement }>();
+
+  private getBossShot(kind: BossShotKind, color: string): { body: HTMLCanvasElement; glow: HTMLCanvasElement } {
+    const key = kind + '|' + color;
+    const hit = this.shotCache.get(key);
+    if (hit) return hit;
+    const S = 64;
+    const mk = () => {
+      const c = document.createElement('canvas');
+      c.width = c.height = S;
+      return c;
+    };
+    const glow = mk();
+    const gg = glow.getContext('2d')!;
+    const grad = gg.createRadialGradient(32, 32, 2, 32, 32, 32);
+    grad.addColorStop(0, color);
+    grad.addColorStop(0.35, color + 'AA');
+    grad.addColorStop(1, color + '00');
+    gg.fillStyle = grad;
+    gg.fillRect(0, 0, S, S);
+
+    const body = mk();
+    const g = body.getContext('2d')!;
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    const ink = PALETTE.ink;
+    if (kind === 'bellwave') {
+      // 三道向前凸的声波弧：一排排开时连成一面「声浪墙」
+      for (const [r, w] of [[12, 4], [20, 5], [28, 4]] as const) {
+        g.strokeStyle = ink;
+        g.lineWidth = w + 4;
+        g.beginPath();
+        g.arc(32, 6, r, Math.PI * 0.12, Math.PI * 0.88);
+        g.stroke();
+        g.strokeStyle = color;
+        g.lineWidth = w;
+        g.stroke();
+      }
+    } else if (kind === 'slide') {
+      // 一页 PPT：紫色标题栏 + 文字行 + 小柱状图
+      g.fillStyle = '#E9FDFF';
+      g.strokeStyle = ink;
+      g.lineWidth = 3;
+      g.beginPath();
+      g.roundRect(10, 15, 44, 34, 4);
+      g.fill();
+      g.stroke();
+      g.fillStyle = PALETTE.purple;
+      g.fillRect(11.5, 16.5, 41, 7);
+      g.fillStyle = '#9AA0B8';
+      g.fillRect(15, 28, 18, 3);
+      g.fillRect(15, 34, 14, 3);
+      g.fillStyle = color;
+      g.fillRect(38, 36, 4, 9);
+      g.fillRect(44, 31, 4, 14);
+      g.strokeStyle = ink;
+      g.lineWidth = 1.5;
+      g.strokeRect(38, 36, 4, 9);
+      g.strokeRect(44, 31, 4, 14);
+    } else if (kind === 'note') {
+      // 便利贴：折角 + 潦草红字
+      g.fillStyle = color;
+      g.strokeStyle = ink;
+      g.lineWidth = 3;
+      g.beginPath();
+      g.moveTo(14, 14);
+      g.lineTo(50, 14);
+      g.lineTo(50, 40);
+      g.lineTo(40, 50);
+      g.lineTo(14, 50);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      g.fillStyle = 'rgba(15,17,26,0.25)';
+      g.beginPath();
+      g.moveTo(50, 40);
+      g.lineTo(40, 40);
+      g.lineTo(40, 50);
+      g.closePath();
+      g.fill();
+      g.strokeStyle = PALETTE.red;
+      g.lineWidth = 2.5;
+      g.beginPath();
+      g.moveTo(19, 24);
+      g.quadraticCurveTo(26, 19, 33, 25);
+      g.quadraticCurveTo(39, 30, 45, 23);
+      g.moveTo(19, 34);
+      g.lineTo(36, 34);
+      g.stroke();
+    } else if (kind === 'fireball') {
+      // 火尾在后（本地 -y），火球在前
+      g.fillStyle = '#FF3366';
+      g.strokeStyle = ink;
+      g.lineWidth = 2.5;
+      g.beginPath();
+      g.moveTo(20, 30);
+      g.quadraticCurveTo(24, 10, 32, 2);
+      g.quadraticCurveTo(40, 10, 44, 30);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      const fg = g.createRadialGradient(30, 36, 2, 32, 38, 16);
+      fg.addColorStop(0, '#FFF7B0');
+      fg.addColorStop(0.45, PALETTE.yellow);
+      fg.addColorStop(1, color);
+      g.fillStyle = fg;
+      g.beginPath();
+      g.arc(32, 38, 15, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+    } else {
+      // KPI 金币
+      g.fillStyle = color;
+      g.strokeStyle = ink;
+      g.lineWidth = 3;
+      g.beginPath();
+      g.arc(32, 32, 20, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.strokeStyle = '#B9821A';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(32, 32, 14, 0, Math.PI * 2);
+      g.stroke();
+      g.fillStyle = ink;
+      g.font = '900 15px sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText('K', 32, 33);
+      g.fillStyle = 'rgba(255,255,255,0.55)';
+      g.beginPath();
+      g.ellipse(25, 24, 5, 3, -0.6, 0, Math.PI * 2);
+      g.fill();
+    }
+    const out = { body, glow };
+    this.shotCache.set(key, out);
+    return out;
+  }
+
   /** 墨渍贴图缓存：每种颜色 3 种形状，预渲染一次后直接贴图 */
   private readonly splatCache = new Map<string, HTMLCanvasElement[]>();
 
@@ -1226,8 +1530,30 @@ export class Renderer {
     ctx.globalAlpha = 1;
   }
 
-  /** 死亡爆开：白闪放大消散 + 冲击波圈 */
+  /** 死亡爆开：白闪放大消散 + 冲击波圈；以及 Boss 招式 / 登场 / 死亡的爆炸冲击波 */
   private drawDeathPops(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    const blasts = world.fx.blasts;
+    for (let i = 0; i < blasts.length; i++) {
+      const b = blasts[i];
+      const k = b.t / b.dur;
+      const e = 1 - (1 - k) * (1 - k);
+      const r = b.r * (0.25 + 0.9 * e);
+      ctx.globalAlpha = (1 - k) * 0.55;
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.ellipse(b.x, b.y, r * 0.8, r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 9 * (1 - k) + 1;
+      ctx.beginPath();
+      ctx.ellipse(b.x, b.y, r, r * 0.62, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = PALETTE.paper;
+      ctx.lineWidth = 5 * (1 - k) + 0.5;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
     const pops = world.fx.pops;
     for (let i = 0; i < pops.length; i++) {
       const p = pops[i];
@@ -1549,20 +1875,32 @@ export class Renderer {
       if (!p.active) continue;
       const s = depthScale(p.y);
       const sx = projectX(p.laneX, p.y);
-      const r = p.radius * s;
-
-      ctx.fillStyle = p.color;
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.arc(sx, p.y, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = PALETTE.yellow;
-      ctx.beginPath();
-      ctx.arc(sx, p.y, r * 0.44, 0, Math.PI * 2);
-      ctx.fill();
+      const size = p.radius * (p.kind === 'bellwave' ? 3.6 : p.kind === 'fireball' ? 3.3 : 2.7) * s;
+      const sp = this.getBossShot(p.kind, p.color);
+      // 拖尾残影
+      for (let k = 3; k >= 1; k--) {
+        const gx = projectX(p.laneX - p.vx * 0.03 * k, p.y - p.vy * 0.03 * k);
+        const gy = p.y - p.vy * 0.03 * k;
+        const gs = size * (1.5 - k * 0.18);
+        ctx.globalAlpha = 0.32 / k;
+        ctx.drawImage(sp.glow, gx - gs / 2, gy - gs / 2, gs, gs);
+      }
+      // 外发光（呼吸）
+      const breathe = 1 + 0.12 * Math.sin(p.age * 14 + i);
+      const gsz = size * 1.9 * breathe;
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(sp.glow, sx - gsz / 2, p.y - gsz / 2, gsz, gsz);
+      ctx.globalAlpha = 1;
+      // 本体：铃声波 / 火球朝飞行方向；便利贴 / 幻灯片自转；金币翻转
+      const heading = Math.atan2(p.vy, p.vx) - Math.PI / 2;
+      ctx.save();
+      ctx.translate(sx, p.y);
+      if (p.kind === 'bellwave' || p.kind === 'fireball') ctx.rotate(heading);
+      else if (p.kind !== 'coin') ctx.rotate(p.rot);
+      const flip = p.kind === 'coin' ? Math.max(0.18, Math.abs(Math.cos(p.rot))) : 1;
+      if (flip !== 1) ctx.scale(flip, 1);
+      ctx.drawImage(sp.body, -size / 2, -size / 2, size, size);
+      ctx.restore();
     }
   }
 
