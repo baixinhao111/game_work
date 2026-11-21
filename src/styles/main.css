@@ -1390,3 +1390,68 @@ body {
   width: 1.1em;
   height: 1.1em;
 }
+
+/* ---------- 首次打开开场页 ---------- */
+.intro-overlay {
+  background: radial-gradient(circle at 50% 35%, rgba(155, 93, 229, 0.35), rgba(15, 17, 26, 0.92) 70%);
+  cursor: pointer;
+}
+.intro-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+.intro-card .game-title {
+  font-size: 64px;
+}
+.intro-hook {
+  color: var(--paper);
+  font-weight: 900;
+  font-size: 18px;
+  line-height: 1.5;
+  text-shadow: 2px 2px 0 var(--ink);
+}
+.intro-hand {
+  position: relative;
+  width: 220px;
+  height: 70px;
+  margin-top: 10px;
+}
+.intro-track {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 22px;
+  border-top: 4px dashed rgba(248, 247, 242, 0.55);
+}
+.intro-hand-icon {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  margin-left: -26px;
+  animation: intro-swipe 1.4s ease-in-out infinite alternate;
+}
+.intro-hand-icon .ic {
+  width: 52px;
+  height: 52px;
+}
+@keyframes intro-swipe {
+  from { transform: translateX(-70px) rotate(-8deg); }
+  to { transform: translateX(70px) rotate(8deg); }
+}
+.intro-cta {
+  background: var(--yellow);
+  color: var(--ink);
+  font-weight: 900;
+  font-size: 20px;
+  padding: 10px 26px;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 5px 5px 0 var(--ink);
+  animation: intro-pulse 1s ease-in-out infinite;
+}
+@keyframes intro-pulse {
+  50% { transform: scale(1.06); }
+}

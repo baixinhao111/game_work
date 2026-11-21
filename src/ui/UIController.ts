@@ -28,6 +28,8 @@ const BOSS_IMAGES = {
 export interface UIActions {
   onStart: () => void;
   onStartEndless: () => void;
+  /** 首次打开：开场页点一下即开始新手引导局 */
+  onIntroStart: () => void;
   onUnlockAudio: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -252,6 +254,8 @@ export class UIController {
   }
 
   syncPhase(phase: GamePhase, state: GameState, save: SaveData): void {
+    // 开场页只属于菜单阶段；任何方式开局都要收起它
+    if (phase !== 'MENU') document.getElementById('intro-overlay')!.classList.add('hidden');
     this.lastState = state;
     this.menuOverlay.classList.toggle('hidden', phase !== 'MENU');
     this.pauseOverlay.classList.toggle('hidden', phase !== 'PAUSED');
@@ -275,7 +279,25 @@ export class UIController {
     }
   }
 
+  /** 首次打开：显示极简开场页，点任意处开始新手引导局 */
+  showIntro(): void {
+    const intro = document.getElementById('intro-overlay')!;
+    intro.classList.remove('hidden');
+    const start = () => {
+      intro.removeEventListener('click', start);
+      intro.classList.add('hidden');
+      this.actions.onUnlockAudio();
+      this.actions.onIntroStart();
+    };
+    intro.addEventListener('click', start);
+  }
+
   private renderMenu(save: SaveData): void {
+    // 功能按进度逐个出现：首局后出现天赋 / 工牌，通关周一后出现无尽模式
+    const veteran = save.tutorialDone;
+    document.getElementById('btn-talents')!.classList.toggle('hidden', !veteran);
+    document.getElementById('btn-badges')!.classList.toggle('hidden', !veteran);
+    document.getElementById('btn-endless')!.classList.toggle('hidden', save.highestCleared < 1);
     this.menuBeans.textContent = String(save.coffeeBeans);
     this.menuBestSquad.textContent = String(save.bestSquad);
     this.menuClears.textContent = `${save.totalClears} 次`;

@@ -9,6 +9,7 @@ import type { AudioEngine } from '../engine/AudioEngine';
 import { ObjectPool } from '../engine/ObjectPool';
 import { clamp, DESIGN_W, PLAYER_Y, projectX } from '../engine/Viewport';
 import { SaveManager } from '../storage/SaveManager';
+import { TutorialSystem } from './TutorialSystem';
 import { BossSystem } from './BossSystem';
 import { CombatSystem, type CombatContext } from './CombatSystem';
 import { ENDLESS_WAVE_DURATION_SEC, EndlessDirector } from './EndlessDirector';
@@ -37,6 +38,8 @@ export interface WorldUICallbacks {
 
 export class GameWorld {
   public readonly squad = new SquadSystem();
+  /** 首局新手引导 */
+  public readonly tutorial = new TutorialSystem();
   public readonly gates: GateSystem;
   public readonly enemies: EnemySystem;
   public readonly bosses: BossSystem;
@@ -220,7 +223,7 @@ export class GameWorld {
     this.contactQuipTimer = 0;
   }
 
-  startNewRun(day = this.selectedDay): void {
+  startNewRun(day = this.selectedDay, opts: { tutorial?: boolean } = {}): void {
     this.selectedDay = day;
     this.level = getLevel(day);
     this.activeTimeline = this.level.timeline;
@@ -228,6 +231,13 @@ export class GameWorld {
     this.resetWorldSubsystems();
 
     this.state = this.createInitialState('PLAYING', false);
+    if (opts.tutorial) {
+      // 教学局：多送 2 层护盾，前 15 秒的怪血量打折（见 stepDirector），先让新玩家爽起来
+      this.tutorial.start(this);
+      this.state.shieldCount = clamp(this.state.shieldCount + 2, 0, 5);
+    } else {
+      this.tutorial.stop();
+    }
     this.uiCallbacks.onEnsureBoss?.({ bossId: this.level.bossId });
     this.squad.rebuildRenderUnits(this.state.squadCount);
     this.quips.trigger('CLEAN_START');
@@ -235,6 +245,7 @@ export class GameWorld {
   }
 
   startEndlessRun(): void {
+    this.tutorial.stop();
     this.refreshTalents();
     this.resetWorldSubsystems();
     this.activeTimeline = EndlessDirector.generateWaveTimeline(1);
@@ -318,6 +329,7 @@ export class GameWorld {
   }
 
   returnToMenu(): void {
+    this.completeTutorial();
     this.resetWorldSubsystems();
     this.activeTimeline = this.level.timeline;
     this.state = this.createInitialState('MENU', false);
@@ -356,6 +368,7 @@ export class GameWorld {
     if (this.state.phase !== 'PLAYING') return;
 
     this.quips.step(dt);
+    this.tutorial.update(dt, this);
     this.stepEffectsOnly(dt);
 
     if (this.state.hitstopTimer > 0) {
@@ -432,7 +445,7 @@ export class GameWorld {
           wave.enemySpawn.enemyId,
           wave.enemySpawn.count,
           wave.enemySpawn.formation,
-          wave.enemySpawn.hpScale,
+          wave.enemySpawn.hpScale * (this.tutorial.active && wave.timeOffsetSec < 15 ? 0.6 : 1),
           wave.enemySpawn.laneCenter
         );
       } else if (wave.type === 'BOSS' && wave.bossId) {
@@ -678,8 +691,20 @@ export class GameWorld {
     };
   }
 
+  /** 首局结束（或中途退出）即视为完成新手引导 */
+  private completeTutorial(): void {
+    if (!this.tutorial.active) return;
+    this.tutorial.stop();
+    this.save.tutorialDone = true;
+    void SaveManager.save(this.save);
+  }
+
   private finishRun(victory: boolean): void {
     if (this.state.phase === 'VICTORY' || this.state.phase === 'DEFEAT') return;
+    if (this.tutorial.active) {
+      this.tutorial.stop();
+      this.save.tutorialDone = true;
+    }
     this.state.phase = victory ? 'VICTORY' : 'DEFEAT';
 
     if (victory) {

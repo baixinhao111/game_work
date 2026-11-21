@@ -453,4 +453,6 @@ export interface SaveData {
   workerCode: string;
   talents: Record<TalentId, number>;
   muted: boolean;
+  /** 是否已完成首局新手引导 */
+  tutorialDone: boolean;
 }

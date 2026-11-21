@@ -58,6 +58,7 @@ export class Renderer {
     this.drawLayer5Projectiles(ctx, world);
     this.drawLayer6FxAndText(ctx, world);
     this.drawLayer7Overlay(ctx, world);
+    this.drawTutorial(ctx, world);
 
     ctx.restore();
   }
@@ -878,6 +879,81 @@ export class Renderer {
         ctx.restore();
       }
     }
+  }
+
+  /** 首局新手引导：拖动手势 / 指向目标的贴纸提示 */
+  private drawTutorial(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    const tip = world.tutorial.tip;
+    if (!tip || world.state.phase !== 'PLAYING') return;
+    const t = world.state.elapsedSec;
+    const appear = Math.min(1, tip.age / 0.2);
+
+    ctx.save();
+    ctx.globalAlpha = appear;
+    ctx.font = '900 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const bubble = (cx: number, cy: number) => {
+      const w = Math.min(DESIGN_W - 24, measureRichText(ctx, tip.text) + 30);
+      const h = 34;
+      const x = Math.max(12 + w / 2, Math.min(DESIGN_W - 12 - w / 2, cx));
+      ctx.fillStyle = PALETTE.ink;
+      ctx.beginPath();
+      ctx.roundRect(x - w / 2 + 4, cy - h / 2 + 4, w, h, 10);
+      ctx.fill();
+      ctx.fillStyle = PALETTE.paper;
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(x - w / 2, cy - h / 2, w, h, 10);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = PALETTE.ink;
+      drawRichText(ctx, tip.text, x, cy + 0.5, { maxWidth: w - 16 });
+    };
+
+    if (tip.id === 'drag') {
+      // 小队下方：左右滑动的手 + 双向箭头轨道
+      const lx = projectX(world.squad.leaderLaneX, PLAYER_Y);
+      const y = PLAYER_Y + 62;
+      ctx.strokeStyle = 'rgba(248, 247, 242, 0.55)';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      ctx.moveTo(lx - 80, y);
+      ctx.lineTo(lx + 80, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawIcon(ctx, 'arrow', lx + 92, y, 22);
+      ctx.save();
+      ctx.translate(lx - 92, y);
+      ctx.scale(-1, 1);
+      drawIcon(ctx, 'arrow', 0, 0, 22);
+      ctx.restore();
+      drawIcon(ctx, 'hand', lx + Math.sin(t * 3.2) * 70, y + 14, 46);
+      bubble(DESIGN_W / 2, PLAYER_Y - 150);
+    } else {
+      // 目标光环 + 弹跳箭头 + 气泡
+      const ax = tip.anchorX;
+      const ay = tip.anchorY;
+      const pulse = 1 + 0.12 * Math.sin(t * 7);
+      ctx.strokeStyle = PALETTE.yellow;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(ax, ay, 44 * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      const above = tip.id !== 'ult';
+      const bob = Math.abs(Math.sin(t * 5)) * 8;
+      const arrowY = above ? ay - 60 - bob : ay - 64 - bob;
+      ctx.save();
+      ctx.translate(ax, arrowY);
+      ctx.rotate(Math.PI / 2);
+      drawIcon(ctx, 'arrow', 0, 0, 30);
+      ctx.restore();
+      bubble(ax, arrowY - 36);
+    }
+    ctx.restore();
   }
 
   /** 贴纸风小标签：深墨硬投影 + 粗描边 */

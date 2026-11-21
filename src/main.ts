@@ -123,6 +123,10 @@ function bootstrap(): void {
         ensureBossForDay(world.selectedDay);
         world.startNewRun(world.selectedDay);
       },
+      onIntroStart: () => {
+        input.resetState();
+        world.startNewRun(1, { tutorial: true });
+      },
       onStartEndless: () => {
         input.resetState();
         world.startEndlessRun();
@@ -195,6 +199,8 @@ function bootstrap(): void {
   ui.syncPhase(world.state.phase, world.state, world.save);
   void world.hydrateSave().then(() => {
     ensureBossForDay(world.selectedDay);
+    // 新玩家跳过菜单：显示开场页，点一下直接开打周一
+    if (!world.save.tutorialDone && world.state.phase === 'MENU') ui.showIntro();
   });
 
   const syncViewport = () => {
