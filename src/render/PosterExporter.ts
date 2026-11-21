@@ -87,7 +87,8 @@ export class PosterExporter {
     ctx.fillStyle = '#4B5068';
     ctx.font = '800 20px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`📅 ${dateStr}   工牌 NO.${save.workerCode}`, 70, 146);
+    // 海报要 toDataURL 导出，不画 SVG 图标（老 iOS WebView 会因此判定画布受污染而导出失败）
+    ctx.fillText(`${dateStr}   工牌 NO.${save.workerCode}`, 70, 146);
     ctx.fillStyle = PALETTE.purple;
     ctx.font = '900 23px sans-serif';
     ctx.fillText(modeLabel, 70, 182);
@@ -250,7 +251,7 @@ export class PosterExporter {
     ctx.fillStyle = PALETTE.ink;
     ctx.font = '900 20px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`🏅 已点亮工牌（${ownedBadges.length}/${BADGES.length}）`, 90, 926);
+    ctx.fillText(`已点亮工牌（${ownedBadges.length}/${BADGES.length}）`, 90, 926);
 
     if (ownedBadges.length === 0) {
       ctx.fillStyle = '#6A7088';
@@ -261,7 +262,7 @@ export class PosterExporter {
       ctx.fillStyle = PALETTE.purple;
       const badgeLine = ownedBadges
         .slice(0, 3)
-        .map((b) => `${b.icon}${b.name}`)
+        .map((b) => `「${b.name}」`)
         .join('  ·  ');
       ctx.fillText(badgeLine, 90, 970);
     }

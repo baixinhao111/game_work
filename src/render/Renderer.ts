@@ -1,3 +1,4 @@
+import { drawIcon, drawRichText, measureRichText, type IconName } from '../ui/icons';
 import { PALETTE } from '../data/palette';
 import type { ActiveQuip } from '../data/quips';
 import { WEAPONS } from '../data/weapons';
@@ -479,15 +480,15 @@ export class Renderer {
     let pillText = '';
     let pillColor: string = PALETTE.yellow;
     if (g.rewardWeapon) {
-      pillText = `🔄 换枪 · ${WEAPONS[g.rewardWeapon].traitBadge}`;
+      pillText = `{i:swap} 换枪 · ${WEAPONS[g.rewardWeapon].traitBadge}`;
       pillColor = PALETTE.yellow;
     } else if (g.rewardAffix) {
-      pillText = '✨ +词条 · 不换枪';
+      pillText = '{i:sparkle} +词条 · 不换枪';
       pillColor = PALETTE.mint;
     }
     if (pillText) {
       ctx.font = `900 ${Math.round(9.5 * s)}px sans-serif`;
-      const pillW = Math.max(78 * s, ctx.measureText(pillText).width + 12 * s);
+      const pillW = Math.max(78 * s, measureRichText(ctx, pillText) + 12 * s);
       const pillH = 15 * s;
       const pillY = sy - 61 * s - pillH;
       ctx.fillStyle = PALETTE.ink;
@@ -499,7 +500,7 @@ export class Renderer {
       ctx.stroke();
       ctx.fillStyle = pillColor;
       ctx.textBaseline = 'middle';
-      ctx.fillText(pillText, sx, pillY + pillH * 0.5 + 0.5);
+      drawRichText(ctx, pillText, sx, pillY + pillH * 0.5 + 0.5);
     }
   }
 
@@ -526,15 +527,15 @@ export class Renderer {
       fillColor = shootable ? 'rgba(44, 14, 24, 0.86)' : 'rgba(255, 51, 102, 0.22)';
       tagText = g.labelOverride
         ? shootable
-          ? `🎯 ${g.labelOverride}`
+          ? `{i:target} ${g.labelOverride}`
           : g.labelOverride
         : shootable
-          ? '🎯 狂射洗白'
+          ? '{i:target} 狂射洗白'
           : '加班减员';
     } else if (g.kind === 'OVERLOAD') {
       mainColor = PALETTE.yellow;
       fillColor = 'rgba(20, 14, 34, 0.76)';
-      tagText = g.labelOverride ?? '⚡ 高压过载';
+      tagText = g.labelOverride ?? '{i:bolt} 高压过载';
     } else if (g.kind === 'SEESAW') {
       mainColor = PALETTE.mint;
       fillColor = 'rgba(0, 245, 212, 0.17)';
@@ -551,7 +552,7 @@ export class Renderer {
       if (shootable) {
         mainColor = PALETTE.mint;
         fillColor = 'rgba(10, 36, 40, 0.84)';
-        tagText = `🎯 续射加码 (${g.value}/${flipCap})`;
+        tagText = `{i:target} 续射加码 (${g.value}/${flipCap})`;
       } else {
         mainColor = PALETTE.mint;
         fillColor = 'rgba(0, 245, 212, 0.20)';
@@ -701,7 +702,7 @@ export class Renderer {
 
     // 顶部迷你中文铭牌（动态测量宽度，确保文字不被裁剪）
     ctx.font = `900 ${Math.round(9.5 * s)}px sans-serif`;
-    const measuredTag = ctx.measureText(tagText).width;
+    const measuredTag = measureRichText(ctx, tagText);
     const tagW = Math.min(w - 6, Math.max(66 * s, measuredTag + 14 * s));
     ctx.fillStyle = PALETTE.ink;
     ctx.beginPath();
@@ -713,7 +714,7 @@ export class Renderer {
     ctx.fillStyle = mainColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(tagText, sx, y0 - 1.5 * s, tagW - 6);
+    drawRichText(ctx, tagText, sx, y0 - 1.5 * s, { maxWidth: tagW - 6 });
 
     // 可射击门底部洗白/加码进度条
     if (shootable) {
@@ -885,7 +886,7 @@ export class Renderer {
     size: number
   ): void {
     ctx.font = `900 ${size}px sans-serif`;
-    const w = ctx.measureText(text).width + 16;
+    const w = measureRichText(ctx, text) + 16;
     const h = size + 10;
     ctx.fillStyle = PALETTE.ink;
     ctx.beginPath();
@@ -901,7 +902,7 @@ export class Renderer {
     ctx.fillStyle = fg;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, x, y + 0.5);
+    drawRichText(ctx, text, x, y + 0.5);
   }
 
   /** 周二至周五 Boss：纯 Canvas 矢量绘制（粗描边 + 45° 贴纸硬投影） */
@@ -1435,7 +1436,7 @@ export class Renderer {
         ctx,
         DESIGN_W * 0.5,
         122,
-        `⚡ 高压过载 · 怪物狂飙 ${state.overloadEnemyTimer.toFixed(1)}s`,
+        `{i:bolt} 高压过载 · 怪物狂飙 ${state.overloadEnemyTimer.toFixed(1)}s`,
         PALETTE.purple,
         PALETTE.yellow,
         11
@@ -1467,7 +1468,7 @@ export class Renderer {
       ctx.font = '900 13px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`🔥 ${state.comboCount} 连杀!`, 0, 0.5);
+      drawRichText(ctx, `{i:flame} ${state.comboCount} 连杀!`, 0, 0.5);
       ctx.restore();
     }
 
@@ -1524,7 +1525,7 @@ export class Renderer {
       ctx.font = '900 18px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(world.bossBannerText, 0, 0);
+      drawRichText(ctx, world.bossBannerText, 0, 0);
       ctx.restore();
     }
 
@@ -1558,7 +1559,7 @@ export class Renderer {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = '900 19px sans-serif';
-      ctx.fillText(bn.title, 6, -11);
+      drawRichText(ctx, bn.title, 6, -11);
       ctx.fillStyle = '#4A4F66';
       ctx.font = '800 12px sans-serif';
       ctx.fillText(bn.sub, 6, 15);
@@ -1667,7 +1668,7 @@ export class Renderer {
 
     const accent =
       quip.tone === 'hype' ? PALETTE.yellow : quip.tone === 'panic' ? PALETTE.red : PALETTE.mint;
-    const badgeIcon = quip.tone === 'hype' ? '⚡' : quip.tone === 'panic' ? '💢' : '😎';
+    const badgeIcon: IconName = quip.tone === 'hype' ? 'bolt' : quip.tone === 'panic' ? 'anger' : 'shades';
 
     ctx.save();
     ctx.font = '900 11.5px sans-serif';
@@ -1740,8 +1741,7 @@ export class Renderer {
     // 情绪角标与吐槽台词
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '900 11px sans-serif';
-    ctx.fillText(badgeIcon, -hw + 16, 0.5);
+    drawIcon(ctx, badgeIcon, -hw + 16, 0.5, 15);
 
     ctx.fillStyle = PALETTE.ink;
     ctx.font = '900 11.5px sans-serif';
@@ -1860,13 +1860,11 @@ export class Renderer {
     ctx.stroke();
 
     // 反派喇叭角标与醒目荧光黄台词
-    const shoutIcon =
-      quip.text.includes('免伤') || quip.text.includes('加班') || quip.text.includes('通宵') ? '💢' : '📢';
+    const shoutIcon: IconName =
+      quip.text.includes('免伤') || quip.text.includes('加班') || quip.text.includes('通宵') ? 'anger' : 'megaphone';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '900 12px sans-serif';
-    ctx.fillStyle = PALETTE.red;
-    ctx.fillText(shoutIcon, -hw + 16, 0.5);
+    drawIcon(ctx, shoutIcon, -hw + 16, 0.5, 16);
 
     ctx.fillStyle = PALETTE.yellow;
     ctx.font = '900 12px sans-serif';

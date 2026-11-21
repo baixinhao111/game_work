@@ -1,3 +1,4 @@
+import type { IconName } from '../ui/icons';
 export type QuipEvent =
   | 'BAD_MATH_CHOICE'
   | 'LOW_SURVIVE'
@@ -29,7 +30,7 @@ export interface QuipEntry {
   tone: QuipTone;
   sender?: string;
   tag?: string;
-  icon?: string;
+  icon?: IconName;
   priority?: boolean;
   lines: readonly string[];
 }
@@ -41,7 +42,7 @@ export interface ActiveQuip {
   text: string;
   sender?: string;
   tag?: string;
-  icon?: string;
+  icon?: IconName;
   duration: number;
   remaining: number;
 }
@@ -137,7 +138,7 @@ export const QUIP_CONFIG: Record<QuipEvent, QuipEntry> = {
     tone: 'sass',
     sender: '数学老师 · 家长群',
     tag: '@你',
-    icon: '📐',
+    icon: 'ruler',
     lines: ['数学老师已连夜将你踢出群聊']
   },
   ULT_READY_IDLE: {
@@ -145,7 +146,7 @@ export const QUIP_CONFIG: Record<QuipEvent, QuipEntry> = {
     tone: 'hype',
     sender: '18:00 打卡助手',
     tag: '提醒',
-    icon: '⏰',
+    icon: 'alarm',
     lines: ['下班卡都亮了还不按，真打算自愿加班？']
   },
   MYSTERY_AMBUSH: {
@@ -153,7 +154,7 @@ export const QUIP_CONFIG: Record<QuipEvent, QuipEntry> = {
     tone: 'panic',
     sender: '老板 · 紧急邮件',
     tag: '高优',
-    icon: '📧',
+    icon: 'mail',
     lines: ['惊喜不惊喜？附赠四个甲方小分队！']
   },
   WEAPON_UPGRADE: {
@@ -161,7 +162,7 @@ export const QUIP_CONFIG: Record<QuipEvent, QuipEntry> = {
     tone: 'hype',
     sender: 'IT 运维小哥',
     tag: '到货',
-    icon: '📦',
+    icon: 'box',
     lines: ['摸鱼装备已签收，电脑风扇准备起飞！']
   },
   SYNERGY_UNLOCKED: {
@@ -170,7 +171,7 @@ export const QUIP_CONFIG: Record<QuipEvent, QuipEntry> = {
     priority: true,
     sender: '摸鱼战神群 (99+)',
     tag: '@所有人',
-    icon: '⚡',
+    icon: 'flask',
     lines: ['化学反应已激活！老板监控当场冒烟！']
   },
   ENDLESS_NEXT: {
@@ -179,7 +180,7 @@ export const QUIP_CONFIG: Record<QuipEvent, QuipEntry> = {
     priority: true,
     sender: '大老板 · 周末群',
     tag: '@所有人',
-    icon: '🔥',
+    icon: 'flame',
     lines: ['打完一个 Boss 还有下一个，周末继续冲！']
   }
 };

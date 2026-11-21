@@ -1,8 +1,9 @@
+import type { IconName } from '../ui/icons';
 import type { TalentId } from '../game/types';
 
 export interface TalentConfig {
   id: TalentId;
-  icon: string;
+  icon: IconName;
   name: string;
   metaphor: string;
   maxLevel: number;
@@ -14,7 +15,7 @@ export const TALENT_ORDER: TalentId[] = ['espresso', 'thick_skin', 'abacus', 'bo
 export const TALENTS: Record<TalentId, TalentConfig> = {
   espresso: {
     id: 'espresso',
-    icon: '☕',
+    icon: 'cup',
     name: '早八浓缩咖啡',
     metaphor: '开局先喝两口提神',
     maxLevel: 10,
@@ -22,7 +23,7 @@ export const TALENTS: Record<TalentId, TalentConfig> = {
   },
   thick_skin: {
     id: 'thick_skin',
-    icon: '🛡️',
+    icon: 'shield',
     name: '防弹厚脸皮',
     metaphor: '脸皮够厚，压力就追不上我',
     maxLevel: 10,
@@ -30,7 +31,7 @@ export const TALENTS: Record<TalentId, TalentConfig> = {
   },
   abacus: {
     id: 'abacus',
-    icon: '🧮',
+    icon: 'abacus',
     name: '摸鱼算盘',
     metaphor: '用最低的精力打最响的算盘',
     maxLevel: 10,
@@ -38,7 +39,7 @@ export const TALENTS: Record<TalentId, TalentConfig> = {
   },
   bonus: {
     id: 'bonus',
-    icon: '💰',
+    icon: 'hongbao',
     name: '年终奖杠杆',
     metaphor: '摸鱼赚豆双倍快乐',
     maxLevel: 10,

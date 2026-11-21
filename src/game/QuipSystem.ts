@@ -99,7 +99,7 @@ export class QuipSystem {
       text,
       sender: channel === 'CHAT' ? '摸鱼系统' : undefined,
       tag: channel === 'CHAT' ? '通知' : undefined,
-      icon: channel === 'CHAT' ? '💬' : undefined,
+      icon: channel === 'CHAT' ? 'chat' : undefined,
       duration,
       remaining: duration
     });

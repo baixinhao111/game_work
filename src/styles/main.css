@@ -1359,3 +1359,34 @@ body {
 .supports-flex-gap .badge-card > * + * {
   margin-top: 0;
 }
+
+/* ---------- 手绘贴纸图标（替代系统 emoji） ---------- */
+.ic {
+  display: inline-block;
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -0.28em;
+  flex-shrink: 0;
+  overflow: visible;
+}
+.icon-btn .ic {
+  width: 22px;
+  height: 22px;
+  vertical-align: middle;
+}
+.badge-icon .ic {
+  width: 34px;
+  height: 34px;
+}
+.talent-icon .ic {
+  width: 28px;
+  height: 28px;
+}
+#quip-avatar-icon .ic {
+  width: 1.4em;
+  height: 1.4em;
+}
+.day-chip small .ic {
+  width: 1.1em;
+  height: 1.1em;
+}

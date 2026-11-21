@@ -254,16 +254,16 @@ export class GameWorld {
     if (opt.kind === 'WEAPON' && opt.weaponId) {
       this.state.activeWeapon = opt.weaponId;
       const w = WEAPONS[opt.weaponId];
-      this.showBanner(`🔄 换装 · ${w.name} (${w.traitBadge})`, w.desc, PALETTE.yellow);
+      this.showBanner(`{i:swap} 换装 · ${w.name} (${w.traitBadge})`, w.desc, PALETTE.yellow);
     } else if (opt.kind === 'AFFIX' && opt.affixId) {
       this.state.affixes[opt.affixId] = (this.state.affixes[opt.affixId] || 0) + 1;
       const a = AFFIXES[opt.affixId];
-      this.showBanner(`✨ ${a.name}`, a.desc, a.color);
+      this.showBanner(`{i:sparkle} ${a.name}`, a.desc, a.color);
     } else if (opt.kind === 'SQUAD_BOOST') {
       this.state.squadCount = Math.round(this.state.squadCount * (opt.squadMult ?? 1.4));
       this.state.shieldCount = clamp(this.state.shieldCount + 2, 0, 5);
       this.state.stats.maxSquad = Math.max(this.state.stats.maxSquad, this.state.squadCount);
-      this.showBanner('📦 摸鱼外援空投', '小队扩编且补满护盾！', PALETTE.mint);
+      this.showBanner('{i:box} 摸鱼外援空投', '小队扩编且补满护盾！', PALETTE.mint);
     }
 
     this.syncSynergies();
@@ -439,7 +439,7 @@ export class GameWorld {
         const cfg = SYNERGIES[id];
         this.state.hitstopTimer = Math.max(this.state.hitstopTimer, 0.04);
         this.audio.playGateFlip();
-        this.showBanner(`⚡ 化学反应 · ${cfg.name}`, cfg.desc, PALETTE.purple);
+        this.showBanner(`{i:flask} 化学反应 · ${cfg.name}`, cfg.desc, PALETTE.purple);
         this.quips.trigger('SYNERGY_UNLOCKED');
         break;
       }
@@ -517,14 +517,14 @@ export class GameWorld {
       setWeapon: (weaponId) => {
         this.state.activeWeapon = weaponId;
         const w = WEAPONS[weaponId];
-        this.showBanner(`🔄 换装 · ${w.name} (${w.traitBadge})`, w.desc, PALETTE.yellow);
+        this.showBanner(`{i:swap} 换装 · ${w.name} (${w.traitBadge})`, w.desc, PALETTE.yellow);
         this.syncSynergies();
       },
       grantAffix: (affixId) => {
         this.state.affixes[affixId] = (this.state.affixes[affixId] || 0) + 1;
         const a = AFFIXES[affixId];
         const lv = this.state.affixes[affixId];
-        this.showBanner(`✨ ${a.name}${lv > 1 ? ` Lv.${lv}` : ''}`, a.desc, a.color);
+        this.showBanner(`{i:sparkle} ${a.name}${lv > 1 ? ` Lv.${lv}` : ''}`, a.desc, a.color);
         this.syncSynergies();
       },
       addBeans: (amount) => {

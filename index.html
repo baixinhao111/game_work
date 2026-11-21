@@ -22,14 +22,14 @@
           <div class="hud-left">
             <div class="sticker-pill day-pill" id="hud-day-badge">周一 · 早八噩梦</div>
             <div class="hud-sub-row">
-              <span class="mini-badge weapon-badge" id="hud-weapon-badge">订书机 · ➡️直线</span>
-              <span class="mini-badge shield-badge hidden" id="hud-shield-badge">🛡️ 0</span>
-              <span class="mini-badge synergy-badge hidden" id="hud-synergy-badge">⚡ 化学反应</span>
+              <span class="mini-badge weapon-badge" id="hud-weapon-badge">订书机 · <i data-ic="arrow"></i>直线</span>
+              <span class="mini-badge shield-badge hidden" id="hud-shield-badge"><i data-ic="shield"></i> 0</span>
+              <span class="mini-badge synergy-badge hidden" id="hud-synergy-badge"><i data-ic="flask"></i> 化学反应</span>
             </div>
           </div>
           <div class="hud-actions">
-            <button type="button" class="icon-btn" id="btn-mute" aria-label="音效开关">🔊</button>
-            <button type="button" class="icon-btn" id="btn-pause" aria-label="暂停游戏">⏸</button>
+            <button type="button" class="icon-btn" id="btn-mute" aria-label="音效开关"><i data-ic="speaker"></i></button>
+            <button type="button" class="icon-btn" id="btn-pause" aria-label="暂停游戏"><i data-ic="pause"></i></button>
           </div>
         </div>
 
@@ -43,7 +43,7 @@
         <!-- 工作群消息通知卡片（CHAT 通道） -->
         <div class="quip-chat hidden" id="quip-banner" data-tone="sass" role="status" aria-live="polite">
           <div class="quip-chat-avatar" id="quip-avatar">
-            <span id="quip-avatar-icon">💬</span>
+            <span id="quip-avatar-icon"><i data-ic="chat"></i></span>
             <i class="quip-unread-dot" aria-hidden="true"></i>
           </div>
           <div class="quip-chat-body">
@@ -83,15 +83,15 @@
 
           <div class="menu-stats">
             <div class="stat-chip">
-              <span class="stat-label">☕ 咖啡豆</span>
+              <span class="stat-label"><i data-ic="bean"></i> 咖啡豆</span>
               <span class="stat-val" id="menu-beans">0</span>
             </div>
             <div class="stat-chip">
-              <span class="stat-label">👥 最高小队</span>
+              <span class="stat-label"><i data-ic="squad"></i> 最高小队</span>
               <span class="stat-val" id="menu-best-squad">0</span>
             </div>
             <div class="stat-chip">
-              <span class="stat-label">📅 已通关</span>
+              <span class="stat-label"><i data-ic="calendar"></i> 已通关</span>
               <span class="stat-val" id="menu-clears">0 次</span>
             </div>
           </div>
@@ -110,20 +110,20 @@
 
           <div class="menu-extra-row">
             <button type="button" class="endless-btn" id="btn-endless">
-              🔥 周末无尽加班
+              <i data-ic="moon"></i> 周末无尽加班
               <small id="endless-best-hint">最高 第0波</small>
             </button>
             <button type="button" class="secondary-btn talent-entry" id="btn-talents">
-              ☕ 摸鱼天赋 <span class="talent-entry-hint" id="talent-entry-hint"></span>
+              <i data-ic="cup"></i> 摸鱼天赋 <span class="talent-entry-hint" id="talent-entry-hint"></span>
             </button>
           </div>
 
           <button type="button" class="ghost-btn badge-entry-btn" id="btn-badges">
-            🏅 工牌图鉴 <span id="badge-count-hint">0/6</span>
+            <i data-ic="idcard"></i> 工牌图鉴 <span id="badge-count-hint">0/6</span>
           </button>
 
           <div class="control-tips">
-            <span>👆 左右拖拽 · 🎯 实心靶门/空投可射 · 虚线光幕子弹直穿</span>
+            <span><i data-ic="hand"></i> 左右拖拽 · <i data-ic="target"></i> 实心靶门/空投可射 · 虚线光幕子弹直穿</span>
           </div>
         </div>
       </div>
@@ -175,15 +175,15 @@
             </div>
             <div class="result-item highlight">
               <span class="r-label">赚取咖啡豆</span>
-              <span class="r-val" id="res-beans">+0 ☕</span>
+              <span class="r-val" id="res-beans">+0 <i data-ic="bean"></i></span>
             </div>
           </div>
 
           <div class="modal-actions">
-            <button type="button" class="poster-btn" id="btn-poster">📸 生成今日摸鱼战报</button>
+            <button type="button" class="poster-btn" id="btn-poster"><i data-ic="camera"></i> 生成今日摸鱼战报</button>
             <button type="button" class="cta-btn hidden" id="btn-next-day">下一天 ▶</button>
             <button type="button" class="cta-btn" id="btn-retry">再来一局</button>
-            <button type="button" class="secondary-btn" id="btn-talents-result">☕ 升级天赋</button>
+            <button type="button" class="secondary-btn" id="btn-talents-result"><i data-ic="cup"></i> 升级天赋</button>
             <button type="button" class="ghost-btn" id="btn-home-result">返回主页</button>
           </div>
         </div>
@@ -194,7 +194,7 @@
         <div class="modal-card poster-modal">
           <div class="sticky-tag">已生成精神状态诊断书</div>
           <img id="poster-img" class="poster-preview-img" alt="今日摸鱼战报" />
-          <p class="poster-tip" id="poster-tip">📸 点击下方按钮保存至系统相册（或长按上方战报保存）</p>
+          <p class="poster-tip" id="poster-tip"><i data-ic="camera"></i> 点击下方按钮保存至系统相册（或长按上方战报保存）</p>
           <div class="modal-actions">
             <button type="button" class="cta-btn" id="btn-poster-download">保存到系统相册</button>
             <button type="button" class="ghost-btn" id="btn-poster-close">关闭预览</button>
@@ -207,7 +207,7 @@
         <div class="modal-card talent-card">
           <div class="sticky-tag">局外永久成长</div>
           <h2 class="modal-title">摸鱼天赋</h2>
-          <p class="modal-desc">咖啡豆余额：<b id="talent-beans">0</b> ☕</p>
+          <p class="modal-desc">咖啡豆余额：<b id="talent-beans">0</b> <i data-ic="bean"></i></p>
           <div class="talent-list" id="talent-list"></div>
           <div class="modal-actions">
             <button type="button" class="cta-btn" id="btn-talents-close">好，回去上班</button>
