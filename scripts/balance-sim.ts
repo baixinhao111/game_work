@@ -197,7 +197,14 @@ function runOnce(day: number, kind: BotKind, talentLv: number): RunResult {
   let t = 0;
   let lastSquad = world.state.squadCount;
   const trace = process.env.TRACE === '1';
-  while (world.state.phase === 'PLAYING' && t < MAX_SEC) {
+  while ((world.state.phase === 'PLAYING' || world.state.phase === 'UPGRADE_PICK') && t < MAX_SEC) {
+    if (world.state.phase === 'UPGRADE_PICK') {
+      // 熟练玩家优先选能触发化学反应的牌；新手随便点
+      const opts = world.state.pendingUpgrades;
+      const syn = opts.findIndex((o) => o.synergyTitle);
+      world.pickUpgrade(kind === 'skilled' && syn >= 0 ? syn : Math.floor(Math.random() * opts.length));
+      continue;
+    }
     bot.step(DT);
     world.step(DT);
     t += DT;

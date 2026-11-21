@@ -72,7 +72,7 @@ export const overload = (mult = 2.5, durationSec = 4.5): GateSpec => ({
   value: mult,
   shootableToFlip: false,
   overloadDurationSec: durationSec,
-  labelOverride: '⚡ 高压过载'
+  labelOverride: '{i:bolt} 高压过载'
 });
 
 /** 联动跷跷板门：射击左侧红门不仅减罚，还会同步给右侧蓝门充能加码 */

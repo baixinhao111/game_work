@@ -2,7 +2,7 @@ import { PALETTE } from '../data/palette';
 import type { AudioEngine } from '../engine/AudioEngine';
 import { ObjectPool } from '../engine/ObjectPool';
 import { LANE_HALF_W, PLAYER_Y, projectX, SCROLL_SPEED, TRACK_BOTTOM_Y, TRACK_TOP_Y } from '../engine/Viewport';
-import type { AffixId, Gate, GateConfig } from './types';
+import type { AffixId, Gate, GateConfig, WeaponId } from './types';
 import type { QuipEvent } from '../data/quips';
 
 export interface GateTriggerContext {
@@ -10,6 +10,8 @@ export interface GateTriggerContext {
   shieldCount: number;
   /** 天赋「防弹厚脸皮」减员倍率 */
   lossMult: number;
+  /** 主线补给箱打爆时打开三选一；返回 true 表示已接管奖励发放 */
+  openCrate?: (reward: { weapon?: WeaponId; affix?: AffixId }) => boolean;
   setSquadCount: (next: number) => void;
   addShield: (delta: number) => void;
   addUltCharge: (delta: number) => void;
@@ -188,13 +190,15 @@ export class GateSystem {
         ctx.triggerShake(4.5, 0.14);
         ctx.spawnFxBurst(worldX, worldY, PALETTE.yellow, 18);
 
-        if (g.rewardWeapon) {
-          ctx.setWeapon(g.rewardWeapon);
+        if (!ctx.openCrate?.({ weapon: g.rewardWeapon, affix: g.rewardAffix })) {
+          if (g.rewardWeapon) {
+            ctx.setWeapon(g.rewardWeapon);
+          }
+          if (g.rewardAffix) {
+            ctx.grantAffix(g.rewardAffix);
+          }
+          ctx.triggerQuip('WEAPON_UPGRADE');
         }
-        if (g.rewardAffix) {
-          ctx.grantAffix(g.rewardAffix);
-        }
-        ctx.triggerQuip('WEAPON_UPGRADE');
       }
       return;
     }

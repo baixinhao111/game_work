@@ -8,6 +8,14 @@ import { WEAPONS } from '../data/weapons';
 import { EndlessDirector } from '../game/EndlessDirector';
 import type { GamePhase, GameState, SaveData, TalentId } from '../game/types';
 import { saveImageToAlbum } from '../platform/MiniToolBridge';
+import { hydrateIcons, iconSvg, richHtml } from './icons';
+
+/** 只在内容变化时写 innerHTML（syncHUD 每帧调用，避免反复重建 DOM） */
+function setRich(el: HTMLElement, text: string): void {
+  if (el.dataset.rich === text) return;
+  el.dataset.rich = text;
+  el.innerHTML = richHtml(text);
+}
 
 const BOSS_IMAGES = {
   alarm: 'boss_alarm.webp',
@@ -20,6 +28,8 @@ const BOSS_IMAGES = {
 export interface UIActions {
   onStart: () => void;
   onStartEndless: () => void;
+  /** 首次打开：开场页点一下即开始新手引导局 */
+  onIntroStart: () => void;
   onUnlockAudio: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -109,7 +119,8 @@ export class UIController {
       });
     }
 
-    this.btnMute.textContent = initialMuted ? '🔇' : '🔊';
+    hydrateIcons(document);
+    this.btnMute.innerHTML = iconSvg(initialMuted ? 'mute' : 'speaker');
     this.bindEvents();
   }
 
@@ -189,7 +200,7 @@ export class UIController {
       this.lastPosterUrl = this.actions.onGeneratePoster();
       this.posterImg.src = this.lastPosterUrl;
       if (this.posterTip) {
-        this.posterTip.textContent = '📸 点击下方按钮保存至系统相册（或长按上方战报保存）';
+        this.posterTip.innerHTML = richHtml('{i:camera} 点击下方按钮保存至系统相册（或长按上方战报保存）');
       }
       this.posterOverlay.classList.remove('hidden');
     });
@@ -233,7 +244,7 @@ export class UIController {
     this.btnMute.addEventListener('click', () => {
       this.actions.onUnlockAudio();
       const muted = this.actions.onToggleMute();
-      this.btnMute.textContent = muted ? '🔇' : '🔊';
+      this.btnMute.innerHTML = iconSvg(muted ? 'mute' : 'speaker');
     });
 
     this.btnUlt.addEventListener('click', () => {
@@ -243,6 +254,8 @@ export class UIController {
   }
 
   syncPhase(phase: GamePhase, state: GameState, save: SaveData): void {
+    // 开场页只属于菜单阶段；任何方式开局都要收起它
+    if (phase !== 'MENU') document.getElementById('intro-overlay')!.classList.add('hidden');
     this.lastState = state;
     this.menuOverlay.classList.toggle('hidden', phase !== 'MENU');
     this.pauseOverlay.classList.toggle('hidden', phase !== 'PAUSED');
@@ -266,7 +279,25 @@ export class UIController {
     }
   }
 
+  /** 首次打开：显示极简开场页，点任意处开始新手引导局 */
+  showIntro(): void {
+    const intro = document.getElementById('intro-overlay')!;
+    intro.classList.remove('hidden');
+    const start = () => {
+      intro.removeEventListener('click', start);
+      intro.classList.add('hidden');
+      this.actions.onUnlockAudio();
+      this.actions.onIntroStart();
+    };
+    intro.addEventListener('click', start);
+  }
+
   private renderMenu(save: SaveData): void {
+    // 功能按进度逐个出现：首局后出现天赋 / 工牌，通关周一后出现无尽模式
+    const veteran = save.tutorialDone;
+    document.getElementById('btn-talents')!.classList.toggle('hidden', !veteran);
+    document.getElementById('btn-badges')!.classList.toggle('hidden', !veteran);
+    document.getElementById('btn-endless')!.classList.toggle('hidden', save.highestCleared < 1);
     this.menuBeans.textContent = String(save.coffeeBeans);
     this.menuBestSquad.textContent = String(save.bestSquad);
     this.menuClears.textContent = `${save.totalClears} 次`;
@@ -281,7 +312,7 @@ export class UIController {
       const cls = ['day-chip', lv.day === selected ? 'active' : '', lv.day <= save.highestCleared ? 'cleared' : '']
         .filter(Boolean)
         .join(' ');
-      return `<button type="button" class="${cls}" data-day="${lv.day}" ${locked ? 'disabled' : ''} aria-pressed="${lv.day === selected}">${lv.weekday.slice(1)}<small>${locked ? '🔒' : lv.day <= save.highestCleared ? '✓' : 'NEW'}</small></button>`;
+      return `<button type="button" class="${cls}" data-day="${lv.day}" ${locked ? 'disabled' : ''} aria-pressed="${lv.day === selected}">${lv.weekday.slice(1)}<small>${locked ? iconSvg('lock') : lv.day <= save.highestCleared ? iconSvg('check') : 'NEW'}</small></button>`;
     }).join('');
 
     const lv = LEVELS[selected - 1];
@@ -301,14 +332,24 @@ export class UIController {
   }
 
   private renderUpgrades(state: GameState): void {
-    const bossId = EndlessDirector.getBossForWave(state.endlessWave);
-    this.upgradeWaveTag.textContent = `第 ${state.endlessWave} 波「${BOSSES[bossId].name}」已击碎！`;
+    const title = document.getElementById('upgrade-title')!;
+    const desc = document.getElementById('upgrade-desc')!;
+    if (state.upgradeSource === 'CRATE') {
+      this.upgradeWaveTag.innerHTML = richHtml('{i:box} 空投补给到货！');
+      title.textContent = '三选一 · 挑件摸鱼装备';
+      desc.textContent = '带「激活」标记的能凑出化学反应，火力直接质变！';
+    } else {
+      const bossId = EndlessDirector.getBossForWave(state.endlessWave);
+      this.upgradeWaveTag.textContent = `第 ${state.endlessWave} 波「${BOSSES[bossId].name}」已击碎！`;
+      title.textContent = '选择你的加班外挂';
+      desc.textContent = '选完立刻迎战下一波更凶猛的加班潮！';
+    }
     this.upgradeList.innerHTML = state.pendingUpgrades
       .map(
         (u, idx) => `<button type="button" class="upgrade-card" data-upidx="${idx}">
           <div class="upgrade-card-top">
-            <span class="upgrade-title">${u.title}</span>
-            ${u.synergyTitle ? `<span class="upgrade-synergy-pill">⚡ ${u.synergyTitle}</span>` : ''}
+            <span class="upgrade-title">${richHtml(u.title)}</span>
+            ${u.synergyTitle ? `<span class="upgrade-synergy-pill">${iconSvg('flask')} ${u.synergyTitle}</span>` : ''}
           </div>
           <span class="upgrade-desc">${u.desc}</span>
         </button>`
@@ -321,7 +362,7 @@ export class UIController {
     this.badgeGrid.innerHTML = BADGES.map((b) => {
       const unlocked = owned.has(b.id);
       return `<div class="badge-card ${unlocked ? '' : 'locked'}">
-        <div class="badge-icon">${unlocked ? b.icon : '🔒'}</div>
+        <div class="badge-icon">${iconSvg(unlocked ? b.icon : 'lock')}</div>
         <div class="badge-name">${b.name}</div>
         <div class="badge-desc">${b.desc}</div>
       </div>`;
@@ -344,13 +385,13 @@ export class UIController {
       const now = lv > 0 ? cfg.describe(lv) : '尚未解锁';
       const next = maxed ? '已满级' : `下一级：${cfg.describe(lv + 1)}`;
       return `<div class="talent-row">
-        <div class="talent-icon">${cfg.icon}</div>
+        <div class="talent-icon">${iconSvg(cfg.icon)}</div>
         <div>
           <div class="talent-name">${cfg.name}<span class="talent-lv">Lv.${lv}</span></div>
           <div class="talent-desc">${now} · ${next}</div>
           <div class="talent-pips">${pips}</div>
         </div>
-        <button type="button" class="talent-buy" data-talent="${id}" ${maxed || save.coffeeBeans < cost ? 'disabled' : ''}>${maxed ? 'MAX' : `${cost} ☕`}</button>
+        <button type="button" class="talent-buy" data-talent="${id}" ${maxed || save.coffeeBeans < cost ? 'disabled' : ''}>${maxed ? 'MAX' : `${cost} ${iconSvg('bean')}`}</button>
       </div>`;
     }).join('');
   }
@@ -359,22 +400,24 @@ export class UIController {
     if (state.phase !== 'PLAYING' && state.phase !== 'PAUSED' && state.phase !== 'UPGRADE_PICK') return;
 
     const wCfg = WEAPONS[state.activeWeapon];
-    this.hudWeaponBadge.textContent =
+    setRich(
+      this.hudWeaponBadge,
       state.affixes.ricochet > 0
         ? `${wCfg.shortTag} · ${wCfg.traitBadge} +弹射`
-        : `${wCfg.shortTag} · ${wCfg.traitBadge}`;
+        : `${wCfg.shortTag} · ${wCfg.traitBadge}`
+    );
     this.hudWeaponBadge.style.borderLeftColor = wCfg.color;
 
     if (state.shieldCount > 0) {
       this.hudShieldBadge.classList.remove('hidden');
-      this.hudShieldBadge.textContent = `🛡️ ${state.shieldCount}`;
+      setRich(this.hudShieldBadge, `{i:shield} ${state.shieldCount}`);
     } else {
       this.hudShieldBadge.classList.add('hidden');
     }
 
     if (state.synergies.length > 0) {
       this.hudSynergyBadge.classList.remove('hidden');
-      this.hudSynergyBadge.textContent = `⚡ ${SYNERGIES[state.synergies[0]].name}`;
+      setRich(this.hudSynergyBadge, `{i:flask} ${SYNERGIES[state.synergies[0]].name}`);
     } else {
       this.hudSynergyBadge.classList.add('hidden');
     }
@@ -410,7 +453,7 @@ export class UIController {
       this.quipBanner.classList.remove('pop-in');
       return;
     }
-    this.quipAvatarIcon.textContent = quip.icon ?? '💬';
+    this.quipAvatarIcon.innerHTML = iconSvg(quip.icon ?? 'chat');
     this.quipSender.textContent = quip.sender ?? '摸鱼战神群';
     this.quipTag.textContent = quip.tag ?? '@你';
     this.quipText.textContent = quip.text;
@@ -441,9 +484,9 @@ export class UIController {
       const names = state.newlyUnlockedBadges
         .map((id) => BADGES.find((b) => b.id === id))
         .filter(Boolean)
-        .map((b) => `${b!.icon}${b!.name}`)
+        .map((b) => `{i:${b!.icon}}${b!.name}`)
         .join('、');
-      this.resultNewBadges.textContent = `🎉 解锁新工牌：${names}`;
+      this.resultNewBadges.innerHTML = richHtml(`{i:sparkle} 解锁新工牌：${names}`);
       this.resultNewBadges.classList.remove('hidden');
     } else {
       this.resultNewBadges.classList.add('hidden');
@@ -483,6 +526,6 @@ export class UIController {
     this.resMaxSquad.textContent = `${state.stats.maxSquad} 人`;
     this.resFlipped.textContent = `${state.stats.gatesFlipped} 次`;
     this.resKills.textContent = `${state.stats.kills}`;
-    this.resBeans.textContent = `+${state.stats.beansEarned} ☕`;
+    this.resBeans.innerHTML = `+${state.stats.beansEarned} ${iconSvg('bean')}`;
   }
 }

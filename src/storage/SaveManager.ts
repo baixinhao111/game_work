@@ -28,7 +28,8 @@ function defaultSave(): SaveData {
     unlockedBadges: [],
     workerCode: genWorkerCode(),
     talents: { espresso: 0, thick_skin: 0, abacus: 0, bonus: 0 },
-    muted: false
+    muted: false,
+    tutorialDone: false
   };
 }
 
@@ -65,7 +66,13 @@ function parseSave(raw: string, fromV1: boolean): SaveData | null {
       unlockedBadges: badges,
       workerCode,
       talents,
-      muted: Boolean(parsed.muted)
+      muted: Boolean(parsed.muted),
+      // 老存档没有这个字段：只要有任何游玩痕迹就视为老玩家，不再弹新手引导
+      tutorialDone:
+        Boolean(parsed.tutorialDone) ||
+        totalClears > 0 ||
+        safeInt(parsed.coffeeBeans, 0, 1e9) > 0 ||
+        TALENT_IDS.some((id) => talents[id] > 0)
     };
   } catch {
     return null;

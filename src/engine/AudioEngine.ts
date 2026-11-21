@@ -17,6 +17,11 @@ export class AudioEngine {
     this.muted = initialMuted;
   }
 
+  /** 已解锁的 AudioContext（供背景音乐共用）；解锁前为 null */
+  get context(): AudioContext | null {
+    return this.ctx;
+  }
+
   get isMuted(): boolean {
     return this.muted;
   }

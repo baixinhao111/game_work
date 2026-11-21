@@ -1,3 +1,4 @@
+import { drawIcon, drawRichText, measureRichText, type IconName } from '../ui/icons';
 import { PALETTE } from '../data/palette';
 import type { ActiveQuip } from '../data/quips';
 import { WEAPONS } from '../data/weapons';
@@ -57,6 +58,7 @@ export class Renderer {
     this.drawLayer5Projectiles(ctx, world);
     this.drawLayer6FxAndText(ctx, world);
     this.drawLayer7Overlay(ctx, world);
+    this.drawTutorial(ctx, world);
 
     ctx.restore();
   }
@@ -389,7 +391,7 @@ export class Renderer {
       }
 
       if (g.kind === 'SUPPLY_CRATE') {
-        this.drawCrateGate(ctx, g, sx, g.y, s, world.state.elapsedSec);
+        this.drawCrateGate(ctx, g, sx, g.y, s, world.state.elapsedSec, !world.state.isEndless);
       } else {
         this.drawMathGate(ctx, g, sx, g.y, s, world.state.elapsedSec);
       }
@@ -434,7 +436,8 @@ export class Renderer {
     sx: number,
     sy: number,
     s: number,
-    timeSec: number
+    timeSec: number,
+    threeChoice = false
   ): void {
     const sp = this.sprites.get('propCrate');
     const drawImg = g.hitFlashTimer > 0 ? sp.flashCanvas : sp.canvas;
@@ -478,16 +481,20 @@ export class Renderer {
     // 顶部类型徽章：明确区分「🔄 换枪」还是「✨ +词条 · 不换枪」
     let pillText = '';
     let pillColor: string = PALETTE.yellow;
-    if (g.rewardWeapon) {
-      pillText = `🔄 换枪 · ${WEAPONS[g.rewardWeapon].traitBadge}`;
+    if (threeChoice) {
+      // 主线：打爆后三选一（关卡设计的奖励是其中一张）
+      pillText = '{i:box} 打爆三选一';
+      pillColor = PALETTE.yellow;
+    } else if (g.rewardWeapon) {
+      pillText = `{i:swap} 换枪 · ${WEAPONS[g.rewardWeapon].traitBadge}`;
       pillColor = PALETTE.yellow;
     } else if (g.rewardAffix) {
-      pillText = '✨ +词条 · 不换枪';
+      pillText = '{i:sparkle} +词条 · 不换枪';
       pillColor = PALETTE.mint;
     }
     if (pillText) {
       ctx.font = `900 ${Math.round(9.5 * s)}px sans-serif`;
-      const pillW = Math.max(78 * s, ctx.measureText(pillText).width + 12 * s);
+      const pillW = Math.max(78 * s, measureRichText(ctx, pillText) + 12 * s);
       const pillH = 15 * s;
       const pillY = sy - 61 * s - pillH;
       ctx.fillStyle = PALETTE.ink;
@@ -499,7 +506,7 @@ export class Renderer {
       ctx.stroke();
       ctx.fillStyle = pillColor;
       ctx.textBaseline = 'middle';
-      ctx.fillText(pillText, sx, pillY + pillH * 0.5 + 0.5);
+      drawRichText(ctx, pillText, sx, pillY + pillH * 0.5 + 0.5);
     }
   }
 
@@ -526,15 +533,15 @@ export class Renderer {
       fillColor = shootable ? 'rgba(44, 14, 24, 0.86)' : 'rgba(255, 51, 102, 0.22)';
       tagText = g.labelOverride
         ? shootable
-          ? `🎯 ${g.labelOverride}`
+          ? `{i:target} ${g.labelOverride}`
           : g.labelOverride
         : shootable
-          ? '🎯 狂射洗白'
+          ? '{i:target} 狂射洗白'
           : '加班减员';
     } else if (g.kind === 'OVERLOAD') {
       mainColor = PALETTE.yellow;
       fillColor = 'rgba(20, 14, 34, 0.76)';
-      tagText = g.labelOverride ?? '⚡ 高压过载';
+      tagText = g.labelOverride ?? '{i:bolt} 高压过载';
     } else if (g.kind === 'SEESAW') {
       mainColor = PALETTE.mint;
       fillColor = 'rgba(0, 245, 212, 0.17)';
@@ -551,7 +558,7 @@ export class Renderer {
       if (shootable) {
         mainColor = PALETTE.mint;
         fillColor = 'rgba(10, 36, 40, 0.84)';
-        tagText = `🎯 续射加码 (${g.value}/${flipCap})`;
+        tagText = `{i:target} 续射加码 (${g.value}/${flipCap})`;
       } else {
         mainColor = PALETTE.mint;
         fillColor = 'rgba(0, 245, 212, 0.20)';
@@ -701,7 +708,7 @@ export class Renderer {
 
     // 顶部迷你中文铭牌（动态测量宽度，确保文字不被裁剪）
     ctx.font = `900 ${Math.round(9.5 * s)}px sans-serif`;
-    const measuredTag = ctx.measureText(tagText).width;
+    const measuredTag = measureRichText(ctx, tagText);
     const tagW = Math.min(w - 6, Math.max(66 * s, measuredTag + 14 * s));
     ctx.fillStyle = PALETTE.ink;
     ctx.beginPath();
@@ -713,7 +720,7 @@ export class Renderer {
     ctx.fillStyle = mainColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(tagText, sx, y0 - 1.5 * s, tagW - 6);
+    drawRichText(ctx, tagText, sx, y0 - 1.5 * s, { maxWidth: tagW - 6 });
 
     // 可射击门底部洗白/加码进度条
     if (shootable) {
@@ -874,6 +881,81 @@ export class Renderer {
     }
   }
 
+  /** 首局新手引导：拖动手势 / 指向目标的贴纸提示 */
+  private drawTutorial(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    const tip = world.tutorial.tip;
+    if (!tip || world.state.phase !== 'PLAYING') return;
+    const t = world.state.elapsedSec;
+    const appear = Math.min(1, tip.age / 0.2);
+
+    ctx.save();
+    ctx.globalAlpha = appear;
+    ctx.font = '900 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const bubble = (cx: number, cy: number) => {
+      const w = Math.min(DESIGN_W - 24, measureRichText(ctx, tip.text) + 30);
+      const h = 34;
+      const x = Math.max(12 + w / 2, Math.min(DESIGN_W - 12 - w / 2, cx));
+      ctx.fillStyle = PALETTE.ink;
+      ctx.beginPath();
+      ctx.roundRect(x - w / 2 + 4, cy - h / 2 + 4, w, h, 10);
+      ctx.fill();
+      ctx.fillStyle = PALETTE.paper;
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(x - w / 2, cy - h / 2, w, h, 10);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = PALETTE.ink;
+      drawRichText(ctx, tip.text, x, cy + 0.5, { maxWidth: w - 16 });
+    };
+
+    if (tip.id === 'drag') {
+      // 小队下方：左右滑动的手 + 双向箭头轨道
+      const lx = projectX(world.squad.leaderLaneX, PLAYER_Y);
+      const y = PLAYER_Y + 62;
+      ctx.strokeStyle = 'rgba(248, 247, 242, 0.55)';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      ctx.moveTo(lx - 80, y);
+      ctx.lineTo(lx + 80, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawIcon(ctx, 'arrow', lx + 92, y, 22);
+      ctx.save();
+      ctx.translate(lx - 92, y);
+      ctx.scale(-1, 1);
+      drawIcon(ctx, 'arrow', 0, 0, 22);
+      ctx.restore();
+      drawIcon(ctx, 'hand', lx + Math.sin(t * 3.2) * 70, y + 14, 46);
+      bubble(DESIGN_W / 2, PLAYER_Y - 150);
+    } else {
+      // 目标光环 + 弹跳箭头 + 气泡
+      const ax = tip.anchorX;
+      const ay = tip.anchorY;
+      const pulse = 1 + 0.12 * Math.sin(t * 7);
+      ctx.strokeStyle = PALETTE.yellow;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(ax, ay, 44 * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      const above = tip.id !== 'ult';
+      const bob = Math.abs(Math.sin(t * 5)) * 8;
+      const arrowY = above ? ay - 60 - bob : ay - 64 - bob;
+      ctx.save();
+      ctx.translate(ax, arrowY);
+      ctx.rotate(Math.PI / 2);
+      drawIcon(ctx, 'arrow', 0, 0, 30);
+      ctx.restore();
+      bubble(ax, arrowY - 36);
+    }
+    ctx.restore();
+  }
+
   /** 贴纸风小标签：深墨硬投影 + 粗描边 */
   private drawSticker(
     ctx: CanvasRenderingContext2D,
@@ -885,7 +967,7 @@ export class Renderer {
     size: number
   ): void {
     ctx.font = `900 ${size}px sans-serif`;
-    const w = ctx.measureText(text).width + 16;
+    const w = measureRichText(ctx, text) + 16;
     const h = size + 10;
     ctx.fillStyle = PALETTE.ink;
     ctx.beginPath();
@@ -901,7 +983,7 @@ export class Renderer {
     ctx.fillStyle = fg;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, x, y + 0.5);
+    drawRichText(ctx, text, x, y + 0.5);
   }
 
   /** 周二至周五 Boss：纯 Canvas 矢量绘制（粗描边 + 45° 贴纸硬投影） */
@@ -1435,7 +1517,7 @@ export class Renderer {
         ctx,
         DESIGN_W * 0.5,
         122,
-        `⚡ 高压过载 · 怪物狂飙 ${state.overloadEnemyTimer.toFixed(1)}s`,
+        `{i:bolt} 高压过载 · 怪物狂飙 ${state.overloadEnemyTimer.toFixed(1)}s`,
         PALETTE.purple,
         PALETTE.yellow,
         11
@@ -1467,7 +1549,7 @@ export class Renderer {
       ctx.font = '900 13px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`🔥 ${state.comboCount} 连杀!`, 0, 0.5);
+      drawRichText(ctx, `{i:flame} ${state.comboCount} 连杀!`, 0, 0.5);
       ctx.restore();
     }
 
@@ -1524,7 +1606,7 @@ export class Renderer {
       ctx.font = '900 18px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(world.bossBannerText, 0, 0);
+      drawRichText(ctx, world.bossBannerText, 0, 0);
       ctx.restore();
     }
 
@@ -1558,10 +1640,10 @@ export class Renderer {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = '900 19px sans-serif';
-      ctx.fillText(bn.title, 6, -11);
+      drawRichText(ctx, bn.title, 6, -11, { maxWidth: 270 });
       ctx.fillStyle = '#4A4F66';
       ctx.font = '800 12px sans-serif';
-      ctx.fillText(bn.sub, 6, 15);
+      ctx.fillText(bn.sub, 6, 15, 270);
       ctx.restore();
     }
 
@@ -1667,7 +1749,7 @@ export class Renderer {
 
     const accent =
       quip.tone === 'hype' ? PALETTE.yellow : quip.tone === 'panic' ? PALETTE.red : PALETTE.mint;
-    const badgeIcon = quip.tone === 'hype' ? '⚡' : quip.tone === 'panic' ? '💢' : '😎';
+    const badgeIcon: IconName = quip.tone === 'hype' ? 'bolt' : quip.tone === 'panic' ? 'anger' : 'shades';
 
     ctx.save();
     ctx.font = '900 11.5px sans-serif';
@@ -1740,8 +1822,7 @@ export class Renderer {
     // 情绪角标与吐槽台词
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '900 11px sans-serif';
-    ctx.fillText(badgeIcon, -hw + 16, 0.5);
+    drawIcon(ctx, badgeIcon, -hw + 16, 0.5, 15);
 
     ctx.fillStyle = PALETTE.ink;
     ctx.font = '900 11.5px sans-serif';
@@ -1860,13 +1941,11 @@ export class Renderer {
     ctx.stroke();
 
     // 反派喇叭角标与醒目荧光黄台词
-    const shoutIcon =
-      quip.text.includes('免伤') || quip.text.includes('加班') || quip.text.includes('通宵') ? '💢' : '📢';
+    const shoutIcon: IconName =
+      quip.text.includes('免伤') || quip.text.includes('加班') || quip.text.includes('通宵') ? 'anger' : 'megaphone';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '900 12px sans-serif';
-    ctx.fillStyle = PALETTE.red;
-    ctx.fillText(shoutIcon, -hw + 16, 0.5);
+    drawIcon(ctx, shoutIcon, -hw + 16, 0.5, 16);
 
     ctx.fillStyle = PALETTE.yellow;
     ctx.font = '900 12px sans-serif';

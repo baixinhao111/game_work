@@ -9,6 +9,7 @@ import type { AudioEngine } from '../engine/AudioEngine';
 import { ObjectPool } from '../engine/ObjectPool';
 import { clamp, DESIGN_W, PLAYER_Y, projectX } from '../engine/Viewport';
 import { SaveManager } from '../storage/SaveManager';
+import { TutorialSystem } from './TutorialSystem';
 import { BossSystem } from './BossSystem';
 import { CombatSystem, type CombatContext } from './CombatSystem';
 import { ENDLESS_WAVE_DURATION_SEC, EndlessDirector } from './EndlessDirector';
@@ -37,6 +38,8 @@ export interface WorldUICallbacks {
 
 export class GameWorld {
   public readonly squad = new SquadSystem();
+  /** 首局新手引导 */
+  public readonly tutorial = new TutorialSystem();
   public readonly gates: GateSystem;
   public readonly enemies: EnemySystem;
   public readonly bosses: BossSystem;
@@ -153,6 +156,7 @@ export class GameWorld {
       },
       synergies: [],
       pendingUpgrades: [],
+      upgradeSource: 'ENDLESS_BOSS',
       newlyUnlockedBadges: [],
       boss: this.bosses.boss,
       bossBannerTimer: 0,
@@ -219,7 +223,7 @@ export class GameWorld {
     this.contactQuipTimer = 0;
   }
 
-  startNewRun(day = this.selectedDay): void {
+  startNewRun(day = this.selectedDay, opts: { tutorial?: boolean } = {}): void {
     this.selectedDay = day;
     this.level = getLevel(day);
     this.activeTimeline = this.level.timeline;
@@ -227,6 +231,13 @@ export class GameWorld {
     this.resetWorldSubsystems();
 
     this.state = this.createInitialState('PLAYING', false);
+    if (opts.tutorial) {
+      // 教学局：多送 2 层护盾，前 15 秒的怪血量打折（见 stepDirector），先让新玩家爽起来
+      this.tutorial.start(this);
+      this.state.shieldCount = clamp(this.state.shieldCount + 2, 0, 5);
+    } else {
+      this.tutorial.stop();
+    }
     this.uiCallbacks.onEnsureBoss?.({ bossId: this.level.bossId });
     this.squad.rebuildRenderUnits(this.state.squadCount);
     this.quips.trigger('CLEAN_START');
@@ -234,6 +245,7 @@ export class GameWorld {
   }
 
   startEndlessRun(): void {
+    this.tutorial.stop();
     this.refreshTalents();
     this.resetWorldSubsystems();
     this.activeTimeline = EndlessDirector.generateWaveTimeline(1);
@@ -251,22 +263,37 @@ export class GameWorld {
     if (!opt) return;
 
     this.state.pendingUpgrades = [];
-    if (opt.kind === 'WEAPON' && opt.weaponId) {
+    if (opt.kind === 'WEAPON' && opt.weaponId && opt.affixId) {
+      // 补给箱组合牌：换武器 + 词条
+      this.state.activeWeapon = opt.weaponId;
+      this.state.affixes[opt.affixId] = (this.state.affixes[opt.affixId] || 0) + 1;
+      const w = WEAPONS[opt.weaponId];
+      const a = AFFIXES[opt.affixId];
+      this.showBanner(`{i:swap} ${w.shortTag} + {i:sparkle} ${a.name}`, a.desc, PALETTE.yellow);
+    } else if (opt.kind === 'WEAPON' && opt.weaponId) {
       this.state.activeWeapon = opt.weaponId;
       const w = WEAPONS[opt.weaponId];
-      this.showBanner(`🔄 换装 · ${w.name} (${w.traitBadge})`, w.desc, PALETTE.yellow);
+      this.showBanner(`{i:swap} 换装 · ${w.name} (${w.traitBadge})`, w.desc, PALETTE.yellow);
     } else if (opt.kind === 'AFFIX' && opt.affixId) {
       this.state.affixes[opt.affixId] = (this.state.affixes[opt.affixId] || 0) + 1;
       const a = AFFIXES[opt.affixId];
-      this.showBanner(`✨ ${a.name}`, a.desc, a.color);
+      this.showBanner(`{i:sparkle} ${a.name}`, a.desc, a.color);
     } else if (opt.kind === 'SQUAD_BOOST') {
       this.state.squadCount = Math.round(this.state.squadCount * (opt.squadMult ?? 1.4));
       this.state.shieldCount = clamp(this.state.shieldCount + 2, 0, 5);
       this.state.stats.maxSquad = Math.max(this.state.stats.maxSquad, this.state.squadCount);
-      this.showBanner('📦 摸鱼外援空投', '小队扩编且补满护盾！', PALETTE.mint);
+      this.showBanner('{i:box} 摸鱼外援空投', '小队扩编且补满护盾！', PALETTE.mint);
     }
 
     this.syncSynergies();
+
+    // 主线补给箱：选完直接回到战斗
+    if (this.state.upgradeSource === 'CRATE') {
+      this.state.phase = 'PLAYING';
+      this.quips.trigger('WEAPON_UPGRADE');
+      this.uiCallbacks.onPhaseChange('PLAYING', this.state, this.save);
+      return;
+    }
 
     // 开启下一波无尽加班
     this.state.endlessWave += 1;
@@ -302,6 +329,7 @@ export class GameWorld {
   }
 
   returnToMenu(): void {
+    this.completeTutorial();
     this.resetWorldSubsystems();
     this.activeTimeline = this.level.timeline;
     this.state = this.createInitialState('MENU', false);
@@ -340,6 +368,7 @@ export class GameWorld {
     if (this.state.phase !== 'PLAYING') return;
 
     this.quips.step(dt);
+    this.tutorial.update(dt, this);
     this.stepEffectsOnly(dt);
 
     if (this.state.hitstopTimer > 0) {
@@ -416,7 +445,7 @@ export class GameWorld {
           wave.enemySpawn.enemyId,
           wave.enemySpawn.count,
           wave.enemySpawn.formation,
-          wave.enemySpawn.hpScale,
+          wave.enemySpawn.hpScale * (this.tutorial.active && wave.timeOffsetSec < 15 ? 0.6 : 1),
           wave.enemySpawn.laneCenter
         );
       } else if (wave.type === 'BOSS' && wave.bossId) {
@@ -439,7 +468,7 @@ export class GameWorld {
         const cfg = SYNERGIES[id];
         this.state.hitstopTimer = Math.max(this.state.hitstopTimer, 0.04);
         this.audio.playGateFlip();
-        this.showBanner(`⚡ 化学反应 · ${cfg.name}`, cfg.desc, PALETTE.purple);
+        this.showBanner(`{i:flask} 化学反应 · ${cfg.name}`, cfg.desc, PALETTE.purple);
         this.quips.trigger('SYNERGY_UNLOCKED');
         break;
       }
@@ -514,17 +543,29 @@ export class GameWorld {
       addUltCharge: (delta) => {
         this.state.ultCharge = clamp(this.state.ultCharge + delta, 0, 100);
       },
+      openCrate: (reward) => {
+        // 无尽模式保持固定掉落（它在 Boss 后已有三选一），只有主线补给箱弹三选一
+        if (this.state.isEndless || this.state.phase !== 'PLAYING') return false;
+        const options = EndlessDirector.generateCrateUpgrades(this.state.activeWeapon, this.state.affixes, reward);
+        if (options.length === 0) return false;
+        this.state.pendingUpgrades = options;
+        this.state.upgradeSource = 'CRATE';
+        this.state.phase = 'UPGRADE_PICK';
+        this.audio.playGateFlip();
+        this.uiCallbacks.onPhaseChange('UPGRADE_PICK', this.state, this.save);
+        return true;
+      },
       setWeapon: (weaponId) => {
         this.state.activeWeapon = weaponId;
         const w = WEAPONS[weaponId];
-        this.showBanner(`🔄 换装 · ${w.name} (${w.traitBadge})`, w.desc, PALETTE.yellow);
+        this.showBanner(`{i:swap} 换装 · ${w.name} (${w.traitBadge})`, w.desc, PALETTE.yellow);
         this.syncSynergies();
       },
       grantAffix: (affixId) => {
         this.state.affixes[affixId] = (this.state.affixes[affixId] || 0) + 1;
         const a = AFFIXES[affixId];
         const lv = this.state.affixes[affixId];
-        this.showBanner(`✨ ${a.name}${lv > 1 ? ` Lv.${lv}` : ''}`, a.desc, a.color);
+        this.showBanner(`{i:sparkle} ${a.name}${lv > 1 ? ` Lv.${lv}` : ''}`, a.desc, a.color);
         this.syncSynergies();
       },
       addBeans: (amount) => {
@@ -631,6 +672,7 @@ export class GameWorld {
             this.state.activeWeapon,
             this.state.affixes
           );
+          this.state.upgradeSource = 'ENDLESS_BOSS';
           this.state.phase = 'UPGRADE_PICK';
           this.audio.playVictory();
           this.uiCallbacks.onPhaseChange('UPGRADE_PICK', this.state, this.save);
@@ -649,8 +691,20 @@ export class GameWorld {
     };
   }
 
+  /** 首局结束（或中途退出）即视为完成新手引导 */
+  private completeTutorial(): void {
+    if (!this.tutorial.active) return;
+    this.tutorial.stop();
+    this.save.tutorialDone = true;
+    void SaveManager.save(this.save);
+  }
+
   private finishRun(victory: boolean): void {
     if (this.state.phase === 'VICTORY' || this.state.phase === 'DEFEAT') return;
+    if (this.tutorial.active) {
+      this.tutorial.stop();
+      this.save.tutorialDone = true;
+    }
     this.state.phase = victory ? 'VICTORY' : 'DEFEAT';
 
     if (victory) {

@@ -3,6 +3,8 @@ import { BOSSES } from './data/enemies';
 import { getLevel, LEVELS } from './data/levels';
 import { talentCost, TALENTS } from './data/talents';
 import { AudioEngine } from './engine/AudioEngine';
+import { MusicEngine } from './engine/MusicEngine';
+import { preloadIcons } from './ui/icons';
 import { InputManager } from './engine/InputManager';
 import { GameLoop } from './engine/Loop';
 import { Viewport } from './engine/Viewport';
@@ -64,6 +66,18 @@ function bootstrap(): void {
 
   const initialSave = SaveManager.load();
   const audio = new AudioEngine(initialSave.muted);
+  const music = new MusicEngine(audio);
+  preloadIcons();
+  // 首次触碰页面任意位置即解锁音频，让菜单待机音乐尽早响起（iOS / 容器须在手势同步栈内解锁）
+  const unlockOnce = () => {
+    audio.unlock();
+    if (audio.context) {
+      document.removeEventListener('touchend', unlockOnce);
+      document.removeEventListener('click', unlockOnce);
+    }
+  };
+  document.addEventListener('touchend', unlockOnce, { passive: true });
+  document.addEventListener('click', unlockOnce);
   const viewport = new Viewport(canvas, ctx);
   const spriteCache = new SpriteCache();
   void spriteCache.loadCore();
@@ -108,6 +122,10 @@ function bootstrap(): void {
         input.resetState();
         ensureBossForDay(world.selectedDay);
         world.startNewRun(world.selectedDay);
+      },
+      onIntroStart: () => {
+        input.resetState();
+        world.startNewRun(1, { tutorial: true });
       },
       onStartEndless: () => {
         input.resetState();
@@ -181,6 +199,8 @@ function bootstrap(): void {
   ui.syncPhase(world.state.phase, world.state, world.save);
   void world.hydrateSave().then(() => {
     ensureBossForDay(world.selectedDay);
+    // 新玩家跳过菜单：显示开场页，点一下直接开打周一
+    if (!world.save.tutorialDone && world.state.phase === 'MENU') ui.showIntro();
   });
 
   const syncViewport = () => {
@@ -201,6 +221,7 @@ function bootstrap(): void {
       viewport.beginFrame();
       renderer.render(ctx, world);
       ui.syncHUD(world.state);
+      music.update(world);
       if (ui.debugEnabled) {
         ui.updateDebug(
           [
