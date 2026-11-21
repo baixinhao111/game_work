@@ -3,6 +3,7 @@ import { BOSSES } from './data/enemies';
 import { getLevel, LEVELS } from './data/levels';
 import { talentCost, TALENTS } from './data/talents';
 import { AudioEngine } from './engine/AudioEngine';
+import { MusicEngine } from './engine/MusicEngine';
 import { InputManager } from './engine/InputManager';
 import { GameLoop } from './engine/Loop';
 import { Viewport } from './engine/Viewport';
@@ -64,6 +65,17 @@ function bootstrap(): void {
 
   const initialSave = SaveManager.load();
   const audio = new AudioEngine(initialSave.muted);
+  const music = new MusicEngine(audio);
+  // 首次触碰页面任意位置即解锁音频，让菜单待机音乐尽早响起（iOS / 容器须在手势同步栈内解锁）
+  const unlockOnce = () => {
+    audio.unlock();
+    if (audio.context) {
+      document.removeEventListener('touchend', unlockOnce);
+      document.removeEventListener('click', unlockOnce);
+    }
+  };
+  document.addEventListener('touchend', unlockOnce, { passive: true });
+  document.addEventListener('click', unlockOnce);
   const viewport = new Viewport(canvas, ctx);
   const spriteCache = new SpriteCache();
   void spriteCache.loadCore();
@@ -201,6 +213,7 @@ function bootstrap(): void {
       viewport.beginFrame();
       renderer.render(ctx, world);
       ui.syncHUD(world.state);
+      music.update(world);
       if (ui.debugEnabled) {
         ui.updateDebug(
           [
