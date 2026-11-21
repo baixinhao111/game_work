@@ -6,6 +6,20 @@ import type { BossConfig, BossId, EnemyConfig, EnemyId } from '../game/types';
  * 敌人在此基础上再主动冲向小队，所以屏幕上看起来是在“迎面扑来”，而不是被路面拖着倒退。
  */
 export const ENEMIES: Record<EnemyId, EnemyConfig> = {
+  // 割草炮灰：成群涌来、一碰就碎，由尸潮导演随时间越刷越多
+  unread_dot: {
+    id: 'unread_dot',
+    name: '未读红点 99+',
+    hp: 9,
+    walkSpeed: 34,
+    homing: 28,
+    behavior: 'homing',
+    radius: 12,
+    damageToSquad: 1,
+    beansReward: 0.1,
+    ultReward: 0.45,
+    color: PALETTE.red
+  },
   overtime_zombie: {
     id: 'overtime_zombie',
     name: '熬夜加班丧尸',

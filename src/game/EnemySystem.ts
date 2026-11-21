@@ -35,6 +35,8 @@ export interface EnemyStepContext {
   triggerQuip: (ev: QuipEvent) => void;
   sayQuip: (text: string) => void;
   onEnemyKilled: (beans: number, ult: number) => void;
+  /** 敌人死亡表现（墨渍、爆开等）；byPlayer=false 表示撞上小队同归于尽 */
+  onEnemyDied?: (e: Enemy, byPlayer: boolean) => void;
   onBossKilled: (beans: number) => void;
 }
 
@@ -192,7 +194,8 @@ export class EnemySystem {
     e.active = false;
     const fxX = projectX(e.laneX, e.y);
     const cfg = ENEMIES[e.configId];
-    ctx.spawnFxBurst(fxX, e.y, cfg.color, e.configId === 'ppt_pie' ? 14 : 7);
+    ctx.spawnFxBurst(fxX, e.y, cfg.color, e.configId === 'ppt_pie' ? 14 : e.configId === 'unread_dot' ? 4 : 7);
+    ctx.onEnemyDied?.(e, giveReward);
     if (giveReward) ctx.onEnemyKilled(e.beansReward, e.ultReward);
 
     if (giveReward && e.splitsOnDeath > 0) {

@@ -39,7 +39,8 @@ export type EnemyId =
   | 'client_tweak'
   | 'client_mini'
   | 'ppt_pie'
-  | 'ddl_flame';
+  | 'ddl_flame'
+  | 'unread_dot';
 
 /**
  * 敌人移动行为：

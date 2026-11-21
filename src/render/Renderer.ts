@@ -54,10 +54,12 @@ export class Renderer {
     this.drawLayer1GroundHints(ctx, world);
     this.drawLayer2Gates(ctx, world);
     this.drawLayer3EnemiesAndBoss(ctx, world);
+    this.drawDeathPops(ctx, world);
     this.drawLayer4Squad(ctx, world);
     this.drawLayer5Projectiles(ctx, world);
     this.drawLayer6FxAndText(ctx, world);
     this.drawLayer7Overlay(ctx, world);
+    this.drawImpactOverlay(ctx, world);
     this.drawTutorial(ctx, world);
 
     ctx.restore();
@@ -198,6 +200,7 @@ export class Renderer {
   }
 
   private drawLayer1GroundHints(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    this.drawDecals(ctx, world);
     // 大招全屏荧光滤镜
     if (world.state.ultActiveTimer > 0) {
       ctx.fillStyle = 'rgba(0, 245, 212, 0.1)';
@@ -1158,6 +1161,167 @@ export class Renderer {
     }
   }
 
+  /** 墨渍贴图缓存：每种颜色 3 种形状，预渲染一次后直接贴图 */
+  private readonly splatCache = new Map<string, HTMLCanvasElement[]>();
+
+  private getSplats(color: string): HTMLCanvasElement[] {
+    let list = this.splatCache.get(color);
+    if (list) return list;
+    list = [];
+    for (let v = 0; v < 3; v++) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 96;
+      const g = c.getContext('2d')!;
+      let seed = 17 + v * 31 + color.length * 7;
+      const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+      g.fillStyle = color;
+      g.beginPath();
+      // 不规则主斑块
+      for (let k = 0; k <= 14; k++) {
+        const a = (k / 14) * Math.PI * 2;
+        const r = 26 + rnd() * 12;
+        const x = 48 + Math.cos(a) * r;
+        const y = 48 + Math.sin(a) * r * 0.62;
+        if (k === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      }
+      g.closePath();
+      g.fill();
+      // 溅射小点
+      for (let k = 0; k < 7; k++) {
+        const a = rnd() * Math.PI * 2;
+        const d = 34 + rnd() * 12;
+        g.beginPath();
+        g.arc(48 + Math.cos(a) * d, 48 + Math.sin(a) * d * 0.62, 2 + rnd() * 4, 0, Math.PI * 2);
+        g.fill();
+      }
+      // 深色内芯，增加层次
+      g.globalAlpha = 0.28;
+      g.fillStyle = PALETTE.ink;
+      g.beginPath();
+      g.ellipse(48, 48, 14, 9, 0, 0, Math.PI * 2);
+      g.fill();
+      list.push(c);
+    }
+    this.splatCache.set(color, list);
+    return list;
+  }
+
+  private drawDecals(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    const decals = world.fx.decals;
+    for (let i = 0; i < decals.length; i++) {
+      const d = decals[i];
+      if (d.life >= d.maxLife || d.y > TRACK_BOTTOM_Y + 30) continue;
+      const fadeIn = Math.min(1, d.life / 0.08);
+      const fadeOut = 1 - Math.max(0, (d.life - d.maxLife * 0.55) / (d.maxLife * 0.45));
+      ctx.globalAlpha = 0.5 * fadeIn * fadeOut;
+      const img = this.getSplats(d.color)[d.variant];
+      const sz = d.size * depthScale(d.y) * (0.75 + 0.25 * fadeIn);
+      ctx.translate(d.x, d.y);
+      ctx.rotate(d.rot);
+      ctx.drawImage(img, -sz, -sz * 0.62, sz * 2, sz * 1.24);
+      ctx.rotate(-d.rot);
+      ctx.translate(-d.x, -d.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** 死亡爆开：白闪放大消散 + 冲击波圈 */
+  private drawDeathPops(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    const pops = world.fx.pops;
+    for (let i = 0; i < pops.length; i++) {
+      const p = pops[i];
+      const k = p.t / p.dur;
+      const sp = this.getEnemySprite(p.configId);
+      const s = depthScale(p.y) * (1 + k * (p.big ? 0.9 : 0.6));
+      const w = sp.logicalW * s;
+      const h = sp.logicalH * s;
+      ctx.globalAlpha = 1 - k;
+      ctx.drawImage(sp.flashCanvas, p.x - w / 2, p.y - h / 2, w, h);
+      ctx.strokeStyle = p.big ? PALETTE.yellow : PALETTE.paper;
+      ctx.lineWidth = (p.big ? 5 : 3) * (1 - k);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, (p.big ? 30 : 14) + k * (p.big ? 46 : 22), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** 屏幕级冲击：速度线、白闪、尸潮警报、清屏 / 里程碑印章 */
+  private drawImpactOverlay(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    const fx = world.fx;
+    const st = world.state;
+    const t = st.elapsedSec;
+
+    // 高连杀速度线：从屏幕两侧向内收束
+    if (st.phase === 'PLAYING' && st.comboCount >= 25) {
+      const k = Math.min(1, (st.comboCount - 25) / 50);
+      ctx.strokeStyle = `rgba(255, 230, 0, ${(0.1 + 0.18 * k).toFixed(3)})`;
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 14; i++) {
+        const y = ((i * 97 + t * 900) % (DESIGN_H + 200)) - 100;
+        const len = 40 + ((i * 53) % 60);
+        const side = i % 2 === 0 ? 0 : DESIGN_W;
+        const dir = i % 2 === 0 ? 1 : -1;
+        ctx.beginPath();
+        ctx.moveTo(side, y);
+        ctx.lineTo(side + dir * (22 + 20 * k), y + len);
+        ctx.stroke();
+      }
+    }
+
+    if (fx.flash > 0) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${(fx.flash / 0.08) * 0.35})`;
+      ctx.fillRect(0, 0, DESIGN_W, DESIGN_H);
+    }
+
+    if (fx.surgeBanner > 0) {
+      const k = fx.surgeBanner;
+      const inT = Math.min(1, (1.7 - k) / 0.15);
+      const blink = Math.floor(t * 10) % 2 === 0;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, k / 0.25);
+      ctx.translate(DESIGN_W * 0.5 + (1 - inT) * -DESIGN_W, 300);
+      ctx.rotate(-0.05);
+      ctx.fillStyle = PALETTE.ink;
+      ctx.fillRect(-180 + 5, -26 + 5, 360, 52);
+      ctx.fillStyle = blink ? PALETTE.red : '#C2143F';
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 4;
+      ctx.fillRect(-180, -26, 360, 52);
+      ctx.strokeRect(-180, -26, 360, 52);
+      ctx.fillStyle = PALETTE.yellow;
+      ctx.font = '900 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      drawRichText(ctx, '{i:warning} 未读消息 99+ 尸潮来袭!', 0, 1);
+      ctx.restore();
+    }
+
+    const sf = fx.stampFx;
+    if (sf) {
+      const p = sf.t / sf.dur;
+      const scale = p < 0.12 ? 2 - (p / 0.12) * 1.0 : 1;
+      const alpha = p > 0.75 ? (1 - p) / 0.25 : 1;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.translate(DESIGN_W * 0.5, 420);
+      ctx.rotate(-0.1);
+      ctx.scale(scale, scale);
+      ctx.font = '900 46px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 12;
+      ctx.strokeText(sf.text, 4, 4);
+      ctx.strokeText(sf.text, 0, 0);
+      ctx.fillStyle = sf.color;
+      ctx.fillText(sf.text, 0, 0);
+      ctx.restore();
+    }
+  }
+
   private getEnemySprite(id: Enemy['configId']): CachedSprite {
     switch (id) {
       case 'cc_all':
@@ -1169,6 +1333,8 @@ export class Renderer {
         return this.sprites.get('enemyPptGolem');
       case 'ddl_flame':
         return this.sprites.get('enemyDdlFlame');
+      case 'unread_dot':
+        return this.sprites.get('enemyUnread');
       default:
         return this.sprites.get('enemyZombie');
     }
@@ -1425,19 +1591,19 @@ export class Renderer {
       ctx.restore();
     }
 
+    // 粒子：逐个手动逆变换还原，避免每粒子 save/restore 的开销（大批割草时粒子很多）
     const particles = world.particles.activeItems;
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 1.6;
     for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
       if (!p.active) continue;
       const alpha = Math.max(0, 1 - p.life / p.maxLife);
-      ctx.save();
       ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      const s = p.size * (0.4 + 0.7 * alpha);
       ctx.translate(p.x, p.y);
       ctx.rotate(p.rot);
-      ctx.fillStyle = p.color;
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 1.6;
-      const s = p.size * (0.4 + 0.7 * alpha);
       if (p.shape === 'star') {
         ctx.beginPath();
         for (let k = 0; k < 4; k++) {
@@ -1452,8 +1618,10 @@ export class Renderer {
         ctx.fillRect(-s * 0.5, -s * 0.5, s, s);
         ctx.strokeRect(-s * 0.5, -s * 0.5, s, s);
       }
-      ctx.restore();
+      ctx.rotate(-p.rot);
+      ctx.translate(-p.x, -p.y);
     }
+    ctx.globalAlpha = 1;
 
     const texts = world.floatingTexts.activeItems;
     for (let i = 0; i < texts.length; i++) {

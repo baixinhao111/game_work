@@ -10,6 +10,8 @@ import { ObjectPool } from '../engine/ObjectPool';
 import { clamp, DESIGN_W, PLAYER_Y, projectX } from '../engine/Viewport';
 import { SaveManager } from '../storage/SaveManager';
 import { TutorialSystem } from './TutorialSystem';
+import { HordeDirector } from './HordeDirector';
+import { ImpactFx } from './ImpactFx';
 import { BossSystem } from './BossSystem';
 import { CombatSystem, type CombatContext } from './CombatSystem';
 import { ENDLESS_WAVE_DURATION_SEC, EndlessDirector } from './EndlessDirector';
@@ -40,6 +42,10 @@ export class GameWorld {
   public readonly squad = new SquadSystem();
   /** 首局新手引导 */
   public readonly tutorial = new TutorialSystem();
+  /** 打击 / 击杀反馈 */
+  public readonly fx: ImpactFx = new ImpactFx(this);
+  /** 尸潮导演：随时间越刷越多的炮灰 */
+  private readonly horde = new HordeDirector();
   public readonly gates: GateSystem;
   public readonly enemies: EnemySystem;
   public readonly bosses: BossSystem;
@@ -207,6 +213,8 @@ export class GameWorld {
   }
 
   private resetWorldSubsystems(): void {
+    this.fx.reset();
+    this.horde.reset();
     this.gates.reset();
     this.enemies.reset();
     this.bosses.reset();
@@ -427,6 +435,7 @@ export class GameWorld {
     this.combat.step(dt, this.enemies, this.bosses, this.gates, ctx);
     this.enemies.step(dt, ctx);
     this.bosses.step(dt, ctx);
+    this.horde.step(dt, this);
 
     this.squad.rebuildRenderUnits(this.state.squadCount);
   }
@@ -479,6 +488,8 @@ export class GameWorld {
     if (this.state.shakeTimer > 0) {
       this.state.shakeTimer = Math.max(0, this.state.shakeTimer - dt);
     }
+
+    this.fx.step(dt);
 
     const pItems = this.particles.activeItems;
     for (let i = 0; i < pItems.length; i++) {
@@ -635,8 +646,12 @@ export class GameWorld {
       onGateFlipped: () => {
         this.state.stats.gatesFlipped += 1;
       },
+      onEnemyDied: (e, byPlayer) => {
+        this.fx.onEnemyDied(e, byPlayer);
+      },
       onEnemyKilled: (beans, ult) => {
         this.state.stats.kills += 1;
+        this.fx.onKillCount(this.state.stats.kills);
         this.state.stats.beansEarned += beans;
         if (this.state.isEndless) this.state.endlessScore += 10 * this.state.endlessWave;
         this.state.ultCharge = clamp(this.state.ultCharge + ult, 0, 100);
@@ -689,6 +704,14 @@ export class GameWorld {
         this.state.muzzleFlashTimer = 0.07;
       }
     };
+  }
+
+  /** 尸潮高峰来袭：警报条 + 警报音 + 震动 */
+  announceSurge(): void {
+    this.fx.surgeBanner = 1.7;
+    this.audio.playGateBad();
+    this.audio.vibrate([20, 40, 20]);
+    this.triggerShake(4, 0.2);
   }
 
   /** 首局结束（或中途退出）即视为完成新手引导 */

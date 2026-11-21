@@ -415,7 +415,14 @@ export class CombatSystem {
     if (chill > 0) e.chillTimer = Math.max(e.chillTimer, chill);
     if (deepChill > 0) e.deepChillTimer = Math.max(e.deepChillTimer, deepChill);
     if (isCrit) this.showCrit(ctx, dmg, projectX(e.laneX, e.y), e.y - 14);
-    if (e.hp <= 0) enemies.killEnemy(e, ctx);
+    if (e.hp <= 0) {
+      enemies.killEnemy(e, ctx);
+    } else {
+      // 命中击退：伤害占血量比例越高退得越远，重装单位只退一点
+      const heavy = e.configId === 'ppt_pie' || e.configId === 'client_tweak';
+      const knock = Math.min(7, Math.max(1.5, (dmg / e.maxHp) * 26)) * (heavy ? 0.35 : 1) * (isCrit ? 1.6 : 1);
+      e.y -= knock;
+    }
   }
 
   /** 暴击飘字节流，避免满屏数字糊住画面 */

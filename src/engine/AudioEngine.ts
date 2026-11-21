@@ -107,6 +107,37 @@ export class AudioEngine {
     }
   }
 
+  private lastKillSoundTime = 0;
+
+  /** 击杀「啵」：音高随连杀数沿五声音阶上行，越杀越带劲（节流避免糊成一片） */
+  playKill(streak: number): void {
+    if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+    const now = this.ctx.currentTime;
+    if (now - this.lastKillSoundTime < 0.035) return;
+    this.lastKillSoundTime = now;
+    const idx = Math.min(PENTATONIC_SCALE.length - 1, Math.floor(streak / 6));
+    const f = PENTATONIC_SCALE[idx] * (0.98 + Math.random() * 0.04);
+    this.playTone(f * 1.5, f * 0.75, 0.05, 'square', 0.045);
+    this.playNoise(0.03, 3200, 0.035);
+  }
+
+  /** 同一帧割倒一大片：低频碎裂声 */
+  playCrunch(): void {
+    if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+    const now = this.ctx.currentTime;
+    if (now - this.lastKillSoundTime < 0.06) return;
+    this.lastKillSoundTime = now;
+    this.playNoise(0.14, 1300, 0.1);
+    this.playTone(130, 48, 0.14, 'sine', 0.13);
+  }
+
+  /** 击杀里程碑：上行三连音 */
+  playMilestone(): void {
+    if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+    const now = this.ctx.currentTime;
+    [783.99, 1046.5, 1318.51].forEach((f, i) => this.playToneAt(now + i * 0.07, f, f, i === 2 ? 0.22 : 0.1, 'square', 0.07));
+  }
+
   playGateTick(stepIndex: number): void {
     if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
     const freq = PENTATONIC_SCALE[Math.min(PENTATONIC_SCALE.length - 1, Math.max(0, stepIndex))];
