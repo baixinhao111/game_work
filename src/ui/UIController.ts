@@ -1,4 +1,7 @@
 import { BADGES } from '../data/badges';
+import { CHARACTERS, getCharacter, isCharacterUnlocked, nextRankUnlock, CLEANER_KILLS } from '../data/characters';
+import { RANKS, rankProgress, rankForXp } from '../data/ranks';
+import { AFFIXES } from '../data/weapons';
 import { BOSSES } from '../data/enemies';
 import { LEVELS } from '../data/levels';
 import type { ActiveQuip } from '../data/quips';
@@ -6,7 +9,7 @@ import { SYNERGIES } from '../data/synergies';
 import { talentCost, TALENT_ORDER, TALENTS } from '../data/talents';
 import { WEAPONS } from '../data/weapons';
 import { EndlessDirector } from '../game/EndlessDirector';
-import type { GamePhase, GameState, SaveData, TalentId } from '../game/types';
+import type { DamageSource, GamePhase, GameState, RunXpResult, SaveData, TalentId } from '../game/types';
 import { saveImageToAlbum } from '../platform/MiniToolBridge';
 import { hydrateIcons, iconSvg, richHtml } from './icons';
 
@@ -42,6 +45,9 @@ export interface UIActions {
   onPickUpgrade: (index: number) => void;
   onGeneratePoster: () => string;
   onBuyTalent: (id: TalentId) => boolean;
+  /** 设置已在 save.settings 上修改，需要应用并保存 */
+  onSettingsChanged: () => void;
+  onReplayTutorial: () => void;
   getSave: () => SaveData;
   getSelectedDay: () => number;
 }
@@ -57,8 +63,14 @@ export class UIController {
   private readonly debugOverlay = document.getElementById('debug-overlay')!;
 
   private readonly menuBeans = document.getElementById('menu-beans')!;
-  private readonly menuBestSquad = document.getElementById('menu-best-squad')!;
   private readonly menuClears = document.getElementById('menu-clears')!;
+  private readonly settingsOverlay = document.getElementById('settings-overlay')!;
+  private readonly rosterOverlay = document.getElementById('roster-overlay')!;
+  private readonly promoOverlay = document.getElementById('promo-overlay')!;
+  /** 结算动画的定时器（重新渲染 / 离开结算时清掉） */
+  private resultTimers: number[] = [];
+  /** 结算动画结束后要弹出的升职卡片队列 */
+  private pendingPromos: number[] = [];
   private readonly dayPicker = document.getElementById('day-picker')!;
   private readonly stageDay = document.getElementById('stage-day')!;
   private readonly stageName = document.getElementById('stage-name')!;
@@ -98,6 +110,14 @@ export class UIController {
   private readonly resultComment = document.getElementById('result-comment')!;
   private readonly resultNewBadges = document.getElementById('result-new-badges')!;
   private readonly resMaxSquad = document.getElementById('res-max-squad')!;
+  private readonly xpLines = document.getElementById('xp-lines')!;
+  private readonly xpTotal = document.getElementById('xp-total')!;
+  private readonly xpRank = document.getElementById('xp-rank')!;
+  private readonly xpCount = document.getElementById('xp-count')!;
+  private readonly xpFill = document.getElementById('xp-fill')!;
+  private readonly xpGain = document.getElementById('xp-gain')!;
+  private readonly recapBuild = document.getElementById('recap-build')!;
+  private readonly recapBars = document.getElementById('recap-bars')!;
   private readonly resFlipped = document.getElementById('res-flipped')!;
   private readonly resKills = document.getElementById('res-kills')!;
   private readonly resBeans = document.getElementById('res-beans')!;
@@ -188,6 +208,60 @@ export class UIController {
       }
     });
 
+    // 设置
+    const openSettings = () => this.openSettings();
+    document.getElementById('btn-settings')!.addEventListener('click', openSettings);
+    document.getElementById('btn-settings-pause')!.addEventListener('click', openSettings);
+    document.getElementById('btn-settings-close')!.addEventListener('click', () => {
+      this.settingsOverlay.classList.add('hidden');
+    });
+    document.getElementById('btn-replay-tutorial')!.addEventListener('click', () => {
+      this.settingsOverlay.classList.add('hidden');
+      this.actions.onUnlockAudio();
+      this.actions.onReplayTutorial();
+    });
+    const bindRange = (id: string, key: 'musicVolume' | 'sfxVolume') => {
+      const input = document.getElementById(id) as HTMLInputElement;
+      input.addEventListener('input', () => {
+        const save = this.actions.getSave();
+        save.settings[key] = Number(input.value) / 100;
+        document.getElementById(`${id}-val`)!.textContent = `${input.value}%`;
+        this.actions.onSettingsChanged();
+      });
+    };
+    bindRange('set-music', 'musicVolume');
+    bindRange('set-sfx', 'sfxVolume');
+    const bindToggle = (id: string, key: 'vibration' | 'lowFx' | 'colorblind') => {
+      const btn = document.getElementById(id)!;
+      btn.addEventListener('click', () => {
+        const save = this.actions.getSave();
+        save.settings[key] = !save.settings[key];
+        btn.setAttribute('aria-pressed', String(save.settings[key]));
+        this.actions.onUnlockAudio();
+        this.actions.onSettingsChanged();
+      });
+    };
+    bindToggle('set-vibration', 'vibration');
+    bindToggle('set-lowfx', 'lowFx');
+    bindToggle('set-colorblind', 'colorblind');
+
+    // 同事名册
+    const openRoster = () => {
+      this.renderRoster(this.actions.getSave());
+      this.rosterOverlay.classList.remove('hidden');
+    };
+    document.getElementById('rank-card')!.addEventListener('click', openRoster);
+    document.getElementById('char-slot')!.addEventListener('click', openRoster);
+    document.getElementById('btn-roster-close')!.addEventListener('click', () => {
+      this.rosterOverlay.classList.add('hidden');
+    });
+
+    // 升职弹窗：可能连升几级，依次展示
+    document.getElementById('btn-promo-ok')!.addEventListener('click', () => {
+      this.promoOverlay.classList.add('hidden');
+      this.showNextPromo();
+    });
+
     document.getElementById('btn-badges')!.addEventListener('click', () => {
       this.renderBadges(this.actions.getSave());
       this.badgeOverlay.classList.remove('hidden');
@@ -257,6 +331,13 @@ export class UIController {
     // 开场页只属于菜单阶段；任何方式开局都要收起它
     if (phase !== 'MENU') document.getElementById('intro-overlay')!.classList.add('hidden');
     this.lastState = state;
+    if (phase !== 'VICTORY' && phase !== 'DEFEAT') {
+      this.clearResultTimers();
+      this.pendingPromos = [];
+      this.promoOverlay.classList.add('hidden');
+    }
+    if (phase !== 'MENU' && phase !== 'PAUSED') this.settingsOverlay.classList.add('hidden');
+    if (phase !== 'MENU') this.rosterOverlay.classList.add('hidden');
     this.menuOverlay.classList.toggle('hidden', phase !== 'MENU');
     this.pauseOverlay.classList.toggle('hidden', phase !== 'PAUSED');
     this.upgradeOverlay.classList.toggle('hidden', phase !== 'UPGRADE_PICK');
@@ -268,7 +349,9 @@ export class UIController {
     } else if (phase === 'UPGRADE_PICK') {
       this.renderUpgrades(state);
     } else if (phase === 'VICTORY' || phase === 'DEFEAT') {
+      this.clearResultTimers();
       this.populateResult(phase === 'VICTORY', state, save);
+      this.playXpAnimation(state.xpResult);
     } else if (phase === 'PLAYING') {
       if (state.isEndless) {
         this.hudDayBadge.textContent = `无尽加班 · 第 ${state.endlessWave} 波`;
@@ -298,12 +381,32 @@ export class UIController {
     document.getElementById('btn-talents')!.classList.toggle('hidden', !veteran);
     document.getElementById('btn-badges')!.classList.toggle('hidden', !veteran);
     document.getElementById('btn-endless')!.classList.toggle('hidden', save.highestCleared < 1);
+    document.getElementById('menu-dock')!.classList.toggle('hidden', !veteran);
     this.menuBeans.textContent = String(save.coffeeBeans);
-    this.menuBestSquad.textContent = String(save.bestSquad);
-    this.menuClears.textContent = `${save.totalClears} 次`;
+    this.menuClears.textContent = `已通关 ${save.highestCleared}/${LEVELS.length}`;
     this.endlessBestHint.textContent =
-      save.endlessBestWave > 0 ? `最高第${save.endlessBestWave}波 · ${save.endlessBestScore}分` : '无限波次肉鸽';
+      save.endlessBestWave > 0 ? `最高第 ${save.endlessBestWave} 波` : '无限波次';
     this.badgeCountHint.textContent = `${save.unlockedBadges.length}/${BADGES.length}`;
+
+    // 工牌：职级 + 经验条
+    const prog = rankProgress(save.xp);
+    document.getElementById('rank-title')!.textContent = prog.rank.title;
+    document.getElementById('rank-no')!.textContent = `工牌 NO.${save.workerCode}`;
+    document.getElementById('rank-xp-fill')!.style.width = `${(prog.ratio * 100).toFixed(1)}%`;
+    document.getElementById('rank-next')!.textContent = prog.next
+      ? `距「${prog.next.title}」还差 ${prog.need - prog.have} 绩效`
+      : `已登顶 · 累计绩效 ${save.xp}`;
+    (document.getElementById('rank-card') as HTMLElement).style.borderColor = '';
+    document.getElementById('rank-avatar')!.style.background = prog.rank.frame;
+
+    // 出战同事 + 下一位解锁提示
+    const ch = getCharacter(save.selectedCharacter);
+    document.getElementById('char-slot-name')!.textContent = ch.name;
+    document.getElementById('char-slot-sub')!.textContent = `${ch.weaponName} · 大招「${ch.ultName}」`;
+    const next = nextRankUnlock(save);
+    document.getElementById('char-slot-next')!.textContent = next
+      ? `${RANKS[('rank' in next.unlock ? next.unlock.rank : 1) - 1].title}解锁\n${next.name}`
+      : '';
 
     const selected = this.actions.getSelectedDay();
     const unlocked = Math.min(LEVELS.length, save.highestCleared + 1);
@@ -328,7 +431,57 @@ export class UIController {
     const affordable = TALENT_ORDER.filter(
       (id) => save.talents[id] < TALENTS[id].maxLevel && save.coffeeBeans >= talentCost(save.talents[id])
     ).length;
-    this.talentEntryHint.textContent = affordable > 0 ? `可升级 ${affordable}` : '';
+    this.talentEntryHint.textContent = affordable > 0 ? `${affordable}` : '';
+  }
+
+  private openSettings(): void {
+    const st = this.actions.getSave().settings;
+    const music = Math.round(st.musicVolume * 100);
+    const sfx = Math.round(st.sfxVolume * 100);
+    (document.getElementById('set-music') as HTMLInputElement).value = String(music);
+    (document.getElementById('set-sfx') as HTMLInputElement).value = String(sfx);
+    document.getElementById('set-music-val')!.textContent = `${music}%`;
+    document.getElementById('set-sfx-val')!.textContent = `${sfx}%`;
+    document.getElementById('set-vibration')!.setAttribute('aria-pressed', String(st.vibration));
+    document.getElementById('set-lowfx')!.setAttribute('aria-pressed', String(st.lowFx));
+    document.getElementById('set-colorblind')!.setAttribute('aria-pressed', String(st.colorblind));
+    // 局内暂停时不提供「重玩引导」（会直接开新局）
+    const inMenu = !this.lastState || this.lastState.phase === 'MENU';
+    document.getElementById('btn-replay-tutorial')!.classList.toggle('hidden', !inMenu);
+    this.settingsOverlay.classList.remove('hidden');
+  }
+
+  private renderRoster(save: SaveData): void {
+    const rank = rankForXp(save.xp);
+    document.getElementById('roster-ranks')!.innerHTML = RANKS.map(
+      (r) => `<span class="${r.level < rank ? 'done' : r.level === rank ? 'now' : ''}">${r.title}</span>`
+    ).join('');
+    const prog = rankProgress(save.xp);
+    document.getElementById('roster-desc')!.textContent = prog.next
+      ? `当前「${prog.rank.title}」· 累计绩效 ${save.xp}，再拿 ${prog.need - prog.have} 升「${prog.next.title}」。每局结算都涨绩效，输了也涨。`
+      : `已经是 CEO 了！累计绩效 ${save.xp}。`;
+    document.getElementById('roster-grid')!.innerHTML = CHARACTERS.map((c) => {
+      const open = isCharacterUnlocked(c, save);
+      const current = c.id === save.selectedCharacter;
+      const hidden = !open && 'kills' in c.unlock;
+      const avatar =
+        c.id === 'intern'
+          ? '<img src="./assets/sprites/hero_slacker.webp" alt="" />'
+          : iconSvg(open ? c.icon : 'lock');
+      const state = current
+        ? '出战中'
+        : open
+          ? '即将上岗'
+          : hidden
+            ? `最高击杀 ${Math.min(save.bestKills, CLEANER_KILLS)}/${CLEANER_KILLS}`
+            : c.unlockHint;
+      return `<div class="roster-item ${current ? 'current' : ''} ${open ? '' : 'locked'}">
+        <span class="char-slot-avatar" style="background:${open ? c.color : ''}">${avatar}</span>
+        <b>${hidden ? '？？？' : c.name}</b>
+        <small>${hidden ? c.unlockHint : c.role}</small>
+        <span class="roster-state">${state}</span>
+      </div>`;
+    }).join('');
   }
 
   private renderUpgrades(state: GameState): void {
@@ -479,6 +632,8 @@ export class UIController {
     const hasNext = !state.isEndless && victory && lv.day < LEVELS.length;
     this.btnNextDay.classList.toggle('hidden', !hasNext);
     if (hasNext) this.btnNextDay.textContent = `下一天：${LEVELS[lv.day].weekday} · ${LEVELS[lv.day].title} ▶`;
+    // 有「下一天」时它是主按钮，「再来一局」降为次要
+    document.getElementById('btn-retry')!.className = hasNext ? 'secondary-btn' : 'cta-btn';
 
     if (state.newlyUnlockedBadges.length > 0) {
       const names = state.newlyUnlockedBadges
@@ -523,9 +678,131 @@ export class UIController {
           : '尸潮别正面硬吃，从侧面绕过去再输出；红门射穿可以洗白成蓝门！';
     }
 
-    this.resMaxSquad.textContent = `${state.stats.maxSquad} 人`;
-    this.resFlipped.textContent = `${state.stats.gatesFlipped} 次`;
+    this.resMaxSquad.textContent = `${state.stats.maxSquad}`;
+    this.resFlipped.textContent = `${state.stats.gatesFlipped}`;
     this.resKills.textContent = `${state.stats.kills}`;
-    this.resBeans.innerHTML = `+${state.stats.beansEarned} ${iconSvg('bean')}`;
+    this.resBeans.innerHTML = `+${state.stats.beansEarned}`;
+    this.renderRecap(state);
+  }
+
+  /** 本局复盘：构筑标签 + 伤害来源条 */
+  private renderRecap(state: GameState): void {
+    const w = WEAPONS[state.activeWeapon];
+    const tags: string[] = [`<span class="tag">${richHtml(w.shortTag)}</span>`];
+    (Object.keys(state.affixes) as (keyof typeof state.affixes)[]).forEach((id) => {
+      const lv = state.affixes[id];
+      if (lv > 0) tags.push(`<span class="tag">${AFFIXES[id].name}${lv > 1 ? ` ×${lv}` : ''}</span>`);
+    });
+    for (const id of state.synergies) tags.push(`<span class="tag syn">${iconSvg('flask')} ${SYNERGIES[id].name}</span>`);
+    this.recapBuild.innerHTML = tags.join('');
+
+    const dmg = state.stats.damage;
+    const total = dmg.weapon + dmg.affix + dmg.synergy + dmg.ult;
+    const rows: { id: DamageSource; label: string; color: string }[] = [
+      { id: 'weapon', label: '主武器', color: '#FF7A3D' },
+      { id: 'affix', label: '词条', color: 'var(--mint)' },
+      { id: 'synergy', label: '化学反应', color: 'var(--purple)' },
+      { id: 'ult', label: '大招', color: 'var(--yellow)' }
+    ];
+    this.recapBars.innerHTML =
+      total <= 0
+        ? '<div class="recap-bar"><span class="lbl">还没打出伤害</span></div>'
+        : rows
+            .filter((r) => dmg[r.id] > 0 || r.id === 'weapon')
+            .map((r) => {
+              const pct = Math.round((dmg[r.id] / total) * 100);
+              return `<div class="recap-bar"><span class="lbl">${r.label}</span><span class="bar"><i data-w="${pct}" style="background:${r.color}"></i></span><span class="pct">${pct}%</span></div>`;
+            })
+            .join('');
+    // 下一帧再设宽度，触发过渡动画
+    this.resultTimers.push(
+      window.setTimeout(() => {
+        const bars = this.recapBars.querySelectorAll('i[data-w]');
+        for (let i = 0; i < bars.length; i++) {
+          const el = bars[i] as HTMLElement;
+          el.style.width = `${el.dataset.w}%`;
+        }
+      }, 60)
+    );
+  }
+
+  private clearResultTimers(): void {
+    for (const t of this.resultTimers) window.clearTimeout(t);
+    this.resultTimers = [];
+  }
+
+  /** 绩效考核动画：逐条亮出经验来源，再把经验条从旧值推到新值；升职时弹任命书 */
+  private playXpAnimation(res: RunXpResult | null): void {
+    this.pendingPromos = [];
+    if (!res) return;
+    const later = (ms: number, fn: () => void) => this.resultTimers.push(window.setTimeout(fn, ms));
+
+    this.xpTotal.textContent = `+${res.total}`;
+    this.xpLines.innerHTML = res.lines
+      .map((l) => `<li><span>${l.label}</span><b>+${l.xp}</b></li>`)
+      .join('');
+    this.xpRank.classList.remove('promoted');
+
+    const setBar = (xpBase: number, xpNow: number, animate: boolean) => {
+      const p = rankProgress(xpNow);
+      const baseInRank = Math.max(p.rank.xp, xpBase);
+      const span = p.next ? p.next.xp - p.rank.xp : 1;
+      const baseRatio = p.next ? (baseInRank - p.rank.xp) / span : 1;
+      const nowRatio = p.ratio;
+      this.xpFill.style.transition = animate ? '' : 'none';
+      this.xpGain.style.transition = animate ? '' : 'none';
+      this.xpFill.style.width = `${(baseRatio * 100).toFixed(1)}%`;
+      this.xpGain.style.left = `${(baseRatio * 100).toFixed(1)}%`;
+      this.xpGain.style.width = `${(Math.max(0, nowRatio - baseRatio) * 100).toFixed(1)}%`;
+      this.xpRank.textContent = p.rank.title;
+      this.xpCount.textContent = p.next ? `${xpNow - p.rank.xp} / ${span}` : `CEO · ${xpNow}`;
+    };
+
+    // 初始：旧经验
+    setBar(res.xpBefore, res.xpBefore, false);
+    const lis = this.xpLines.querySelectorAll('li');
+    let t = 250;
+    for (let i = 0; i < lis.length; i++) {
+      const li = lis[i];
+      later(t, () => li.classList.add('on'));
+      t += 170;
+    }
+
+    // 跨职级：先推满当前职级，再从新职级的 0 开始
+    let xpCursor = res.xpBefore;
+    for (let r = res.rankBefore; r < res.rankAfter; r++) {
+      const target = RANKS[r].xp; // 下一职级门槛
+      const from = xpCursor;
+      later(t, () => {
+        setBar(from, target - 0.001, true);
+      });
+      t += 750;
+      const newRank = r + 1;
+      later(t, () => {
+        setBar(target, target, false);
+        this.xpRank.classList.add('promoted');
+        this.pendingPromos.push(newRank);
+      });
+      t += 120;
+      xpCursor = target;
+    }
+    const from = xpCursor;
+    later(t, () => setBar(from, res.xpAfter, true));
+    t += 800;
+    if (res.rankAfter > res.rankBefore) later(t, () => this.showNextPromo());
+  }
+
+  private showNextPromo(): void {
+    const lv = this.pendingPromos.shift();
+    if (lv === undefined) return;
+    const r = RANKS[lv - 1];
+    document.getElementById('promo-title')!.textContent = r.title;
+    const ch = r.unlocks ? CHARACTERS.find((c) => c.id === r.unlocks) : null;
+    const extra = r.reward.replace(/^新同事：[^·]+(· )?/, '').trim();
+    document.getElementById('promo-unlock')!.innerHTML = ch
+      ? `<div class="promo-char"><span class="char-slot-avatar" style="background:${ch.color}">${iconSvg(ch.icon)}</span><span><small>解锁新同事</small><b>${ch.name}</b>${ch.role}</span></div>${extra ? `<div style="margin-top:6px">${extra}</div>` : ''}`
+      : r.reward;
+    this.promoOverlay.classList.remove('hidden');
+    this.actions.onUnlockAudio();
   }
 }

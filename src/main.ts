@@ -186,6 +186,14 @@ function bootstrap(): void {
         audio.playGateGood();
         return true;
       },
+      onSettingsChanged: () => {
+        world.applySettings(true);
+        applyQuality();
+      },
+      onReplayTutorial: () => {
+        input.resetState();
+        world.replayTutorial();
+      },
       getSave: () => world.save,
       getSelectedDay: () => world.selectedDay
     },
@@ -198,6 +206,7 @@ function bootstrap(): void {
 
   ui.syncPhase(world.state.phase, world.state, world.save);
   void world.hydrateSave().then(() => {
+    applyQuality();
     ensureBossForDay(world.selectedDay);
     // 新玩家跳过菜单：显示开场页，点一下直接开打周一
     if (!world.save.tutorialDone && world.state.phase === 'MENU') ui.showIntro();
@@ -207,6 +216,14 @@ function bootstrap(): void {
     viewport.sync();
     void applyWindowAvoidance();
   };
+  /** 省电画质：渲染分辨率上限降到 1.25 */
+  function applyQuality(): void {
+    const next = world.lowFx ? 1.25 : 2;
+    if (viewport.maxDpr !== next) {
+      viewport.maxDpr = next;
+      viewport.sync();
+    }
+  }
   window.addEventListener('resize', syncViewport);
   syncViewport();
   input.attach();

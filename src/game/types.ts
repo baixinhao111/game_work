@@ -430,6 +430,8 @@ export interface GameState {
   /** 三选一来源：无尽 Boss 后 / 主线补给箱 */
   upgradeSource: 'ENDLESS_BOSS' | 'CRATE';
   newlyUnlockedBadges: string[];
+  /** 结算时写入：本局绩效经验与职级变化 */
+  xpResult: RunXpResult | null;
   boss: BossRuntime;
   bossBannerTimer: number;
   hitstopTimer: number;
@@ -452,7 +454,41 @@ export interface GameState {
     beansEarned: number;
     maxCritDamage: number;
     bossTimeSec: number;
+    /** 本局伤害来源统计（结算复盘用） */
+    damage: Record<DamageSource, number>;
   };
+}
+
+/** 伤害来源：主武器 / 词条（分裂、电弧）/ 化学反应强化弹 / 大招 */
+export type DamageSource = 'weapon' | 'affix' | 'synergy' | 'ult';
+
+export type CharacterId = 'intern' | 'coder' | 'designer' | 'pm' | 'sales' | 'cleaner';
+
+export interface GameSettings {
+  /** 0~1 */
+  musicVolume: number;
+  /** 0~1 */
+  sfxVolume: number;
+  vibration: boolean;
+  /** 省电画质：少粒子、无墨渍、降低渲染分辨率 */
+  lowFx: boolean;
+  /** 色弱友好：红门加斜纹、蓝门加波点 */
+  colorblind: boolean;
+}
+
+/** 一局结算的绩效经验明细 */
+export interface XpLine {
+  label: string;
+  xp: number;
+}
+
+export interface RunXpResult {
+  lines: XpLine[];
+  total: number;
+  xpBefore: number;
+  xpAfter: number;
+  rankBefore: number;
+  rankAfter: number;
 }
 
 export interface SaveData {
@@ -470,4 +506,12 @@ export interface SaveData {
   muted: boolean;
   /** 是否已完成首局新手引导 */
   tutorialDone: boolean;
+  /** v4：累计绩效经验（决定职级） */
+  xp: number;
+  /** v4：出战角色 */
+  selectedCharacter: CharacterId;
+  /** v4：历史单局最高击杀（隐藏角色解锁进度） */
+  bestKills: number;
+  /** v4：设置 */
+  settings: GameSettings;
 }

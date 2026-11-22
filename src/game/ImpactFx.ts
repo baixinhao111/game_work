@@ -82,11 +82,17 @@ export class ImpactFx {
     const cfg = ENEMIES[e.configId];
     const big = ELITES.has(e.configId);
 
-    if (this.pops.length < MAX_POPS) {
+    const low = this.world.lowFx;
+    if (!low && this.pops.length < MAX_POPS) {
       this.pops.push({ x, y: e.y, configId: e.configId, t: 0, dur: big ? 0.2 : 0.13, big });
     }
 
-    // 地面墨渍：环形缓冲，满了就覆盖最旧的
+    // 地面墨渍：环形缓冲，满了就覆盖最旧的（省电画质下不留墨渍）
+    if (low) {
+      if (byPlayer) this.killsThisStep++;
+      if (byPlayer && big) this.onBigKill();
+      return;
+    }
     const decal: Decal = {
       x,
       y: e.y + e.radius * 0.5,
@@ -107,15 +113,17 @@ export class ImpactFx {
     if (!byPlayer) return;
     this.killsThisStep++;
 
-    if (big) {
-      // 大怪：顿帧 + 白闪 + 震屏 + 闷响
-      const st = this.world.state;
-      st.hitstopTimer = Math.max(st.hitstopTimer, 0.05);
-      st.shakeMagnitude = Math.max(st.shakeMagnitude, 6);
-      st.shakeTimer = Math.max(st.shakeTimer, 0.16);
-      this.flash = Math.max(this.flash, 0.08);
-      this.world.audio.playExplosion(true);
-    }
+    if (big) this.onBigKill();
+  }
+
+  /** 大怪：顿帧 + 白闪 + 震屏 + 闷响 */
+  private onBigKill(): void {
+    const st = this.world.state;
+    st.hitstopTimer = Math.max(st.hitstopTimer, 0.05);
+    st.shakeMagnitude = Math.max(st.shakeMagnitude, 6);
+    st.shakeTimer = Math.max(st.shakeTimer, 0.16);
+    this.flash = Math.max(this.flash, 0.08);
+    this.world.audio.playExplosion(true);
   }
 
   /** 爆炸冲击波：Boss 炸弹、登场落地、死亡连环爆 */
@@ -126,6 +134,7 @@ export class ImpactFx {
 
   /** 地面焦痕（深色墨渍，跟随路面滚动淡出） */
   addScorch(x: number, y: number, size: number): void {
+    if (this.world.lowFx) return;
     const decal: Decal = { x, y, color: '#2A1620', size, rot: (Math.random() - 0.5) * 0.4, variant: Math.floor(Math.random() * 3), life: 0, maxLife: 3.5 };
     if (this.decals.length < MAX_DECALS) this.decals.push(decal);
     else {

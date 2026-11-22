@@ -7,7 +7,13 @@ import type { BossSystem } from './BossSystem';
 import type { EnemyStepContext, EnemySystem } from './EnemySystem';
 import type { GateSystem, GateTriggerContext } from './GateSystem';
 import { isGateShootable } from './GateSystem';
-import type { AffixId, Bullet, BulletKind, Enemy, LightningArc, SynergyId, WeaponId } from './types';
+import type { AffixId, Bullet, BulletKind, DamageSource, Enemy, LightningArc, SynergyId, WeaponId } from './types';
+
+/** 子弹的伤害来源（结算复盘用） */
+function bulletSource(b: Bullet): DamageSource {
+  if (b.synergyPowered) return 'synergy';
+  return b.kind === 'split' ? 'affix' : 'weapon';
+}
 
 const MAX_ACTIVE_BULLETS = 180;
 /** 单兵基础 DPS；总火力 = BASE × N^FIRE_EXPONENT × 武器倍率，人数越多边际收益越低 */
@@ -26,6 +32,8 @@ export interface CombatContext extends EnemyStepContext, GateTriggerContext {
   /** 词条「越摸越顺」射速倍率 */
   hasteMult: number;
   onCritDamage: (dmg: number) => void;
+  /** 结算复盘：按来源累计伤害 */
+  recordDamage: (src: DamageSource, amount: number) => void;
   onFiredShot: () => void;
   triggerPodOverclock: () => void;
 }
@@ -322,8 +330,10 @@ export class CombatSystem {
         if (dx * dx + dy * dy <= hitR * hitR) {
           const hitX = projectX(b.laneX, b.y);
           const bossX = projectX(boss.laneX, boss.y);
+          const hpBefore = boss.hp;
           const applied = bossSys.damage(b.damage, bossX, boss.y, ctx);
           if (applied) {
+            ctx.recordDamage(bulletSource(b), Math.max(0, hpBefore - boss.hp));
             if (hasGptOverclock && b.kind === 'pod' && b.isCrit) ctx.triggerPodOverclock();
             if (b.isCrit) this.showCrit(ctx, b.damage, hitX, b.y - 10);
             ctx.spawnFxBurst(hitX, b.y, b.color, 2);
@@ -348,7 +358,7 @@ export class CombatSystem {
         if (dx * dx + dy * dy > hitR * hitR) continue;
 
         b.hitIds.add(e.uid);
-        this.applyHit(e, b.damage, b.isCrit, b.chillDuration, b.deepChillDuration, enemies, ctx);
+        this.applyHit(e, b.damage, b.isCrit, b.chillDuration, b.deepChillDuration, enemies, ctx, bulletSource(b));
 
         if (hasGptOverclock && b.kind === 'pod' && b.isCrit) {
           ctx.triggerPodOverclock();
@@ -409,8 +419,10 @@ export class CombatSystem {
     chill: number,
     deepChill: number,
     enemies: EnemySystem,
-    ctx: CombatContext
+    ctx: CombatContext,
+    src: DamageSource
   ): void {
+    ctx.recordDamage(src, Math.min(dmg, Math.max(0, e.hp)));
     e.hp -= dmg;
     e.flashTimer = 0.06;
     if (chill > 0) e.chillTimer = Math.max(e.chillTimer, chill);
@@ -462,7 +474,7 @@ export class CombatSystem {
           superconduct: isSuperconduct
         });
       }
-      this.applyHit(next, dmg * dmgScale, false, 0, 0, enemies, ctx);
+      this.applyHit(next, dmg * dmgScale, false, 0, 0, enemies, ctx, isSuperconduct ? 'synergy' : 'affix');
       from = next;
     }
   }

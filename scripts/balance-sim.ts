@@ -172,6 +172,7 @@ interface RunResult {
   endSquad: number;
   beans: number;
   kills: number;
+  xp: number;
 }
 
 function runOnce(day: number, kind: BotKind, talentLv: number): RunResult {
@@ -223,8 +224,62 @@ function runOnce(day: number, kind: BotKind, talentLv: number): RunResult {
     maxSquad: st.stats.maxSquad,
     endSquad: st.squadCount,
     beans: st.stats.beansEarned,
-    kills: st.stats.kills
+    kills: st.stats.kills,
+    xp: st.xpResult ? st.xpResult.total : 0
   };
+}
+
+/**
+ * 生涯模式（CAREER=casual|skilled）：从空存档开始，每局打最高解锁关（通关后循环打无尽 / 最高关），
+ * 结算后贪心买天赋，记录升到每个职级用了几局——验证 docs/07 §5 的解锁节奏。
+ */
+function runCareer(kind: BotKind, totalRuns: number): void {
+  mem.clear();
+  const audio = new AudioEngine(true);
+  const world = new GameWorld(audio, { onPhaseChange: () => {}, onQuipChange: () => {} });
+  world.save.muted = true;
+  world.save.tutorialDone = true;
+  const reached: Record<number, number> = { 1: 0 };
+  let clearedAt = 0;
+  for (let n = 1; n <= totalRuns; n++) {
+    const day = Math.min(LEVELS.length, world.save.highestCleared + 1);
+    world.startNewRun(day);
+    const bot = new Bot(kind, world);
+    let t = 0;
+    while ((world.state.phase === 'PLAYING' || world.state.phase === 'UPGRADE_PICK') && t < MAX_SEC) {
+      if (world.state.phase === 'UPGRADE_PICK') {
+        const opts = world.state.pendingUpgrades;
+        const syn = opts.findIndex((o) => o.synergyTitle);
+        world.pickUpgrade(kind === 'skilled' && syn >= 0 ? syn : Math.floor(Math.random() * opts.length));
+        continue;
+      }
+      bot.step(DT);
+      world.step(DT);
+      t += DT;
+    }
+    const res = world.state.xpResult;
+    if (res) for (let r = res.rankBefore + 1; r <= res.rankAfter; r++) reached[r] = n;
+    if (!clearedAt && world.save.highestCleared >= LEVELS.length) clearedAt = n;
+    // 贪心买天赋：总挑最便宜的
+    for (;;) {
+      const ids = (Object.keys(world.save.talents) as TalentId[]).filter((id) => world.save.talents[id] < 10);
+      if (!ids.length) break;
+      ids.sort((a, b) => world.save.talents[a] - world.save.talents[b]);
+      const id = ids[0];
+      const cost = Math.round(40 * Math.pow(1.45, world.save.talents[id]));
+      if (world.save.coffeeBeans < cost) break;
+      world.save.coffeeBeans -= cost;
+      world.save.talents[id] += 1;
+    }
+    world.refreshTalents();
+  }
+  console.log(`career ${kind}: ${totalRuns} runs, xp ${world.save.xp}, first full clear at run ${clearedAt || '-'}`);
+  console.log('rank reached at run: ' + Object.keys(reached).map((r) => `${r}@${reached[Number(r)]}`).join('  '));
+}
+
+if (process.env.CAREER) {
+  runCareer(process.env.CAREER as BotKind, Number(process.argv[2] ?? 40));
+  process.exit(0);
 }
 
 const runs = Number(process.argv[2] ?? 12);
@@ -240,7 +295,7 @@ const cases: Array<[BotKind, number]> = process.env.CASE ? [[process.env.CASE.sp
   ['skilled', 6]
 ];
 
-console.log('day | bot        tal | win%  | bossSec | endBossHp | maxSq | endSq | beans | kills');
+console.log('day | bot        tal | win%  | bossSec | endBossHp | maxSq | endSq | beans | kills |  xp');
 for (const level of LEVELS) {
   if (onlyDay && level.day !== onlyDay) continue;
   for (const [kind, tal] of cases) {
@@ -258,7 +313,8 @@ for (const level of LEVELS) {
         ` ${avg(rs.map((r) => r.maxSquad)).toFixed(0).padStart(4)} `,
         ` ${avg(wins.map((r) => r.endSquad)).toFixed(0).padStart(4)} `,
         ` ${avg(rs.map((r) => r.beans)).toFixed(0).padStart(4)} `,
-        ` ${avg(rs.map((r) => r.kills)).toFixed(0).padStart(4)}`
+        ` ${avg(rs.map((r) => r.kills)).toFixed(0).padStart(4)} `,
+        ` ${avg(rs.map((r) => r.xp)).toFixed(0).padStart(4)}`
       ].join('|')
     );
   }

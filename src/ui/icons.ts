@@ -21,7 +21,14 @@ const dbl = (d: string, color: string, w = 2.6) =>
   `<path d="${d}" fill="none" stroke="${K}" stroke-width="${w + 2.4}"/><path d="${d}" fill="none" stroke="${color}" stroke-width="${w}"/>`;
 
 const ICONS = {
-  speaker: `<path d="M3 9h4l5-4v14l-5-4H3z" fill="${Y}"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" fill="none"/>`,
+  gear: `<path d="M10.3 2.5h3.4l.6 2.6 2 1.1 2.5-.9 1.7 2.9-2 1.8v2.2l2 1.8-1.7 2.9-2.5-.9-2 1.1-.6 2.6h-3.4l-.6-2.6-2-1.1-2.5.9-1.7-2.9 2-1.8V11L3.4 9.2l1.7-2.9 2.5.9 2-1.1z" fill="${W}"/><circle cx="12" cy="12" r="3.2" fill="${Y}"/>`,
+  star: `<path d="M12 2.8l2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3-4.6-4.4 6.3-.9z" fill="${Y}"/>`,
+  chart: `<rect x="3.5" y="12" width="4" height="8" rx="1" fill="${M}"/><rect x="10" y="6" width="4" height="14" rx="1" fill="${Y}"/><rect x="16.5" y="9" width="4" height="11" rx="1" fill="${R}"/>`,
+  person: `<circle cx="12" cy="7.5" r="4" fill="${SKIN}"/><path d="M4.5 21c.5-5 3.6-7.6 7.5-7.6s7 2.6 7.5 7.6z" fill="${M}"/>`,
+  home: `<path d="M3.5 11.5L12 4l8.5 7.5" fill="none"/><path d="M6 10v10h12V10" fill="${W}"/><rect x="10" y="14" width="4" height="6" fill="${Y}"/>`,
+  retry: `${dbl('M18.5 8.5A7.5 7.5 0 1 0 19.5 13', Y, 2.6)}<path d="M15 4.5l4.5 4-5 2z" fill="${Y}"/>`,
+  play: `<path d="M7 4.5v15l12-7.5z" fill="${Y}"/>`,
+    speaker: `<path d="M3 9h4l5-4v14l-5-4H3z" fill="${Y}"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" fill="none"/>`,
   mute: `<path d="M3 9h4l5-4v14l-5-4H3z" fill="${Y}"/>${dbl('M15.5 9l5 6M20.5 9l-5 6', R, 2.2)}`,
   pause: `<rect x="5" y="4" width="5" height="16" rx="1.5" fill="${W}"/><rect x="14" y="4" width="5" height="16" rx="1.5" fill="${W}"/>`,
   bean: `<g transform="rotate(32 12 12)"><ellipse cx="12" cy="12" rx="6.5" ry="9.3" fill="${C}"/><path d="M11 3.5c2.6 3.6-1.8 8.6 1 17" fill="none"/></g>`,

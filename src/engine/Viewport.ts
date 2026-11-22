@@ -25,6 +25,8 @@ export function projectX(laneX: number, y: number): number {
 
 export class Viewport {
   public dpr = 1;
+  /** 渲染分辨率上限（省电画质下降到 1.25） */
+  public maxDpr = 2;
   public scale = 1;
   public cssScale = 1;
   public offsetX = 0;
@@ -46,7 +48,7 @@ export class Viewport {
 
     this.cssWidth = Math.max(1, vw);
     this.cssHeight = Math.max(1, vh);
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.dpr = Math.min(window.devicePixelRatio || 1, this.maxDpr);
 
     const backingW = Math.round(this.cssWidth * this.dpr);
     const backingH = Math.round(this.cssHeight * this.dpr);

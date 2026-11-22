@@ -41,6 +41,8 @@ const BOSS_SPRITES = {
 export class Renderer {
   private readonly sortedEnemiesScratch: Enemy[] = [];
   private scrollOffset = 0;
+  /** 色弱友好：门除颜色外再加纹理区分（红门斜纹、蓝门波点） */
+  private colorblind = false;
 
   constructor(private readonly sprites: SpriteCache) {
     ensureCanvasRoundRect();
@@ -48,6 +50,7 @@ export class Renderer {
 
   render(ctx: CanvasRenderingContext2D, world: GameWorld): void {
     const state = world.state;
+    this.colorblind = world.save.settings.colorblind;
     // 路面滚动与门/敌人使用同一速度，避免“地面和物体速度对不上”的漂浮感
     this.scrollOffset = (state.elapsedSec * SCROLL_SPEED) % 90;
 
@@ -601,6 +604,46 @@ export class Renderer {
     }
   }
 
+  /** 色弱模式纹理：坏门 = 粗交叉斜纹，好门 = 波点（在门体裁剪区域内绘制） */
+  private drawColorblindPattern(
+    ctx: CanvasRenderingContext2D,
+    bad: boolean,
+    x0: number,
+    y0: number,
+    w: number,
+    h: number,
+    s: number
+  ): void {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    if (bad) {
+      ctx.strokeStyle = PALETTE.paper;
+      ctx.lineWidth = 2.2 * s;
+      ctx.beginPath();
+      const step = 12 * s;
+      for (let rx = x0 - h; rx < x0 + w + h; rx += step) {
+        ctx.moveTo(rx, y0 + h);
+        ctx.lineTo(rx + h, y0);
+        ctx.moveTo(rx, y0);
+        ctx.lineTo(rx + h, y0 + h);
+      }
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = PALETTE.paper;
+      const step = 11 * s;
+      ctx.beginPath();
+      for (let yy = y0 + step * 0.5; yy < y0 + h; yy += step) {
+        const odd = Math.round((yy - y0) / step) % 2;
+        for (let xx = x0 + step * (odd ? 1 : 0.5); xx < x0 + w; xx += step) {
+          ctx.moveTo(xx + 2.2 * s, yy);
+          ctx.arc(xx, yy, 2.2 * s, 0, Math.PI * 2);
+        }
+      }
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   private drawMathGate(
     ctx: CanvasRenderingContext2D,
     g: Gate,
@@ -721,6 +764,7 @@ export class Renderer {
       }
       ctx.stroke();
     }
+    if (this.colorblind) this.drawColorblindPattern(ctx, g.op === '-' || g.op === '÷', x0, y0, w, h, s);
     ctx.restore();
 
     if (shootable) {
