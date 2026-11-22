@@ -1038,13 +1038,14 @@ export class Renderer {
       ctx.scale(pulse * swell, (2 - pulse) * swell);
       const sp = this.sprites.get(BOSS_SPRITES[boss.style]);
       if (sp.loaded || boss.style === 'alarm') {
-        const img =
-          boss.flashTimer > 0
-            ? sp.flashCanvas
-            : boss.enraged && Math.floor(t * 8) % 2 === 0
-              ? sp.rageCanvas
-              : sp.canvas;
+        const img = boss.enraged && Math.floor(t * 8) % 2 === 0 ? sp.rageCanvas : sp.canvas;
         ctx.drawImage(img, -sp.logicalW * 0.5, -sp.logicalH * 0.5, sp.logicalW, sp.logicalH);
+        // 受击闪白：持续被打时整只 Boss 会一直是白的、看不清，改成约 6Hz 闪烁的半透明白色叠层
+        if (boss.flashTimer > 0 && Math.floor(t * 12) % 2 === 0) {
+          ctx.globalAlpha = 0.42;
+          ctx.drawImage(sp.flashCanvas, -sp.logicalW * 0.5, -sp.logicalH * 0.5, sp.logicalW, sp.logicalH);
+          ctx.globalAlpha = 1;
+        }
       } else {
         // 图片加载失败时的矢量兜底
         this.drawVectorBoss(ctx, boss, t);
