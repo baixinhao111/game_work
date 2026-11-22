@@ -1498,10 +1498,16 @@ body {
 }
 
 /* ---------- 主菜单：全屏布局 ---------- */
+/* 主菜单背景：亮紫波普底 + 网点 + 对阵区黄色聚光（不再压暗游戏画面） */
 .menu-screen {
   align-items: stretch;
   padding: 0;
-  background: rgba(15, 17, 26, 0.78);
+  background-color: #6a3fd0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1.4px, transparent 1.8px),
+    linear-gradient(180deg, #8a5cf0 0%, #6a3fd0 45%, #4a2aa6 100%);
+  background-size: 16px 16px, 100% 100%;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .menu-scroll {
@@ -1701,6 +1707,7 @@ body {
 }
 
 .hero-versus {
+  position: relative;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -1710,6 +1717,25 @@ body {
 
 .hero-versus > * + * {
   margin-left: 6px;
+}
+
+/* 对阵舞台：波普黄色椭圆地台 */
+.hero-versus::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 250px;
+  height: 46px;
+  margin-left: -125px;
+  background: var(--yellow);
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: 0 5px 0 var(--ink);
+}
+
+.hero-versus > * {
+  position: relative;
 }
 
 .hero-me {
@@ -2513,6 +2539,11 @@ body {
   .hero-versus {
     height: 62px;
     margin-top: 2px;
+  }
+  .hero-versus::before {
+    width: 190px;
+    height: 32px;
+    margin-left: -95px;
   }
   .hero-me {
     width: 54px;
