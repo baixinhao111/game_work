@@ -197,7 +197,7 @@ export class MusicEngine {
       this.synth = new MusicSynth(ctx, ctx.destination);
       this.timer = setInterval(() => this.tick(), TICK_MS);
     }
-    this.synth.bus.gain.setTargetAtTime(this.audio.isMuted ? 0 : BUS_VOLUME, ctx.currentTime, 0.05);
+    this.synth.bus.gain.setTargetAtTime(BUS_VOLUME * this.audio.musicVolume, ctx.currentTime, 0.05);
 
     const st = world.state;
     const boss = world.bosses.boss;

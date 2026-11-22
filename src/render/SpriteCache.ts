@@ -44,7 +44,7 @@ const BOSS_SPECS = [
   { key: 'bossKpi', style: 'kpi', file: 'boss_kpi.webp', w: 166, h: 166, fallbackColor: PALETTE.yellow }
 ] as const;
 
-export type SpriteKey = (typeof CORE_SPECS)[number]['key'] | (typeof BOSS_SPECS)[number]['key'];
+export type SpriteKey = (typeof CORE_SPECS)[number]['key'] | (typeof BOSS_SPECS)[number]['key'] | 'enemyUnread';
 
 export class SpriteCache {
   private readonly map = new Map<SpriteKey, CachedSprite>();
@@ -57,6 +57,7 @@ export class SpriteCache {
     for (const spec of BOSS_SPECS) {
       this.map.set(spec.key, this.createPlaceholder(spec.w, spec.h, spec.fallbackColor));
     }
+    this.map.set('enemyUnread', this.createUnreadSprite());
   }
 
   get(key: SpriteKey): CachedSprite {
@@ -120,6 +121,64 @@ export class SpriteCache {
       img.onerror = () => reject(new Error(`Failed to load sprite: ${url}`));
       img.src = url;
     });
+  }
+
+  /** 「未读红点 99+」炮灰：纯代码绘制，不占包体 */
+  private createUnreadSprite(): CachedSprite {
+    const L = 34;
+    const canvas = document.createElement('canvas');
+    canvas.width = L * 3;
+    canvas.height = L * 3;
+    const ctx = canvas.getContext('2d')!;
+    ctx.scale(3, 3);
+    const cx = L / 2;
+    const cy = L / 2 - 1;
+    // 硬投影
+    ctx.fillStyle = PALETTE.ink;
+    ctx.beginPath();
+    ctx.arc(cx + 2, cy + 2, 13, 0, Math.PI * 2);
+    ctx.fill();
+    // 红色气泡 + 小尾巴
+    ctx.fillStyle = PALETTE.red;
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+    ctx.moveTo(cx - 4, cy + 12);
+    ctx.lineTo(cx - 8, cy + 17);
+    ctx.lineTo(cx + 2, cy + 12.5);
+    ctx.fill();
+    ctx.stroke();
+    // 高光
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(cx - 5, cy - 7, 4, 2.2, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // 怒眉
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, cy - 4);
+    ctx.lineTo(cx - 3, cy - 2);
+    ctx.moveTo(cx + 8, cy - 4);
+    ctx.lineTo(cx + 3, cy - 2);
+    ctx.stroke();
+    // 99+
+    ctx.fillStyle = PALETTE.paper;
+    ctx.font = '900 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 2.6;
+    ctx.strokeText('99+', cx, cy + 4);
+    ctx.fillText('99+', cx, cy + 4);
+    return {
+      canvas,
+      flashCanvas: this.createTintVariant(canvas, PALETTE.paper),
+      rageCanvas: this.createRageVariant(canvas),
+      logicalW: L,
+      logicalH: L,
+      loaded: true
+    };
   }
 
   private createPlaceholder(logicalW: number, logicalH: number, color: string): CachedSprite {

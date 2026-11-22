@@ -16,11 +16,20 @@ import {
 } from '../engine/Viewport';
 import { getGateFlipCap, isGateShootable } from '../game/GateSystem';
 import type { GameWorld } from '../game/GameWorld';
-import type { BossRuntime, Enemy, Gate } from '../game/types';
+import type { BossRuntime, BossShotKind, Enemy, Gate } from '../game/types';
 import { ensureCanvasRoundRect } from './canvasCompat';
 import type { CachedSprite, SpriteCache } from './SpriteCache';
 
 const CLOCK_MARKS = ['09:00', '11:00', '13:00', '15:00', '17:30', '18:00'];
+/** Boss 主题色：蓄力光晕、出招闪光、弹道预告 */
+const BOSS_ACCENT = {
+  alarm: '#FFE600',
+  projector: '#7FF7FF',
+  hydra: '#C77DFF',
+  server: '#FF8A3D',
+  kpi: '#FFC93C'
+} as const;
+
 const BOSS_SPRITES = {
   alarm: 'bossAlarm',
   projector: 'bossProjector',
@@ -32,6 +41,8 @@ const BOSS_SPRITES = {
 export class Renderer {
   private readonly sortedEnemiesScratch: Enemy[] = [];
   private scrollOffset = 0;
+  /** 色弱友好：门除颜色外再加纹理区分（红门斜纹、蓝门波点） */
+  private colorblind = false;
 
   constructor(private readonly sprites: SpriteCache) {
     ensureCanvasRoundRect();
@@ -39,6 +50,7 @@ export class Renderer {
 
   render(ctx: CanvasRenderingContext2D, world: GameWorld): void {
     const state = world.state;
+    this.colorblind = world.save.settings.colorblind;
     // 路面滚动与门/敌人使用同一速度，避免“地面和物体速度对不上”的漂浮感
     this.scrollOffset = (state.elapsedSec * SCROLL_SPEED) % 90;
 
@@ -54,10 +66,12 @@ export class Renderer {
     this.drawLayer1GroundHints(ctx, world);
     this.drawLayer2Gates(ctx, world);
     this.drawLayer3EnemiesAndBoss(ctx, world);
+    this.drawDeathPops(ctx, world);
     this.drawLayer4Squad(ctx, world);
     this.drawLayer5Projectiles(ctx, world);
     this.drawLayer6FxAndText(ctx, world);
     this.drawLayer7Overlay(ctx, world);
+    this.drawImpactOverlay(ctx, world);
     this.drawTutorial(ctx, world);
 
     ctx.restore();
@@ -198,6 +212,7 @@ export class Renderer {
   }
 
   private drawLayer1GroundHints(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    this.drawDecals(ctx, world);
     // 大招全屏荧光滤镜
     if (world.state.ultActiveTimer > 0) {
       ctx.fillStyle = 'rgba(0, 245, 212, 0.1)';
@@ -265,10 +280,12 @@ export class Renderer {
     this.drawBossHazards(ctx, world);
   }
 
-  /** Boss 地面技能：激光柱预警/激活、点名红圈炸弹 */
+  /** Boss 地面技能：激光柱（细线蓄能 → 三层光柱）/ 炸弹（瞄准框 + 抛物线落弹） */
   private drawBossHazards(ctx: CanvasRenderingContext2D, world: GameWorld): void {
     const hazards = world.bosses.hazards.activeItems;
+    const boss = world.bosses.boss;
     const t = world.state.elapsedSec;
+    const beamColor = boss.style === 'projector' ? '#7FF7FF' : boss.style === 'kpi' ? '#FFC93C' : PALETTE.red;
     for (let i = 0; i < hazards.length; i++) {
       const h = hazards[i];
       if (!h.active) continue;
@@ -276,39 +293,77 @@ export class Renderer {
       const prog = warn ? 1 - h.warnTimer / h.warnMax : 1;
 
       if (h.kind === 'laser') {
-        const topY = TRACK_TOP_Y + 40;
+        const topY = TRACK_TOP_Y + 6;
         const botY = TRACK_BOTTOM_Y;
         const xTop = projectX(h.laneX, topY);
         const xBot = projectX(h.laneX, botY);
-        const wTop = h.halfWidth * depthScale(topY);
-        const wBot = h.halfWidth * depthScale(botY);
+        const column = (halfW: number) => {
+          const wt = halfW * depthScale(topY);
+          const wb = halfW * depthScale(botY);
+          ctx.beginPath();
+          ctx.moveTo(xTop - wt, topY);
+          ctx.lineTo(xTop + wt, topY);
+          ctx.lineTo(xBot + wb, botY);
+          ctx.lineTo(xBot - wb, botY);
+          ctx.closePath();
+        };
         ctx.save();
         if (warn) {
-          ctx.globalAlpha = 0.18 + 0.22 * prog + (Math.floor(t * 14) % 2 === 0 ? 0.08 : 0);
-          ctx.fillStyle = PALETTE.red;
-        } else {
-          ctx.globalAlpha = 0.85;
+          // 蓄能：危险区淡红底 + 中央细线由细变粗、越来越快地闪
+          ctx.globalAlpha = 0.1 + 0.16 * prog;
+          ctx.fillStyle = beamColor;
+          column(h.halfWidth);
+          ctx.fill();
+          const flick = Math.floor(t * (8 + prog * 22)) % 2 === 0;
+          ctx.globalAlpha = flick ? 0.95 : 0.45;
+          ctx.strokeStyle = beamColor;
+          ctx.lineWidth = 1.5 + prog * 4;
+          ctx.setLineDash([12, 8]);
+          ctx.lineDashOffset = -t * 120;
+          ctx.beginPath();
+          ctx.moveTo(xTop, topY);
+          ctx.lineTo(xBot, botY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // 顶端蓄能光球
+          ctx.globalAlpha = 0.6 + 0.4 * prog;
+          ctx.fillStyle = beamColor;
+          ctx.beginPath();
+          ctx.arc(xTop, topY + 6, 5 + prog * 10, 0, Math.PI * 2);
+          ctx.fill();
           ctx.fillStyle = PALETTE.paper;
-        }
-        ctx.beginPath();
-        ctx.moveTo(xTop - wTop, topY);
-        ctx.lineTo(xTop + wTop, topY);
-        ctx.lineTo(xBot + wBot, botY);
-        ctx.lineTo(xBot - wBot, botY);
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = PALETTE.red;
-        ctx.lineWidth = warn ? 2 : 4;
-        ctx.setLineDash(warn ? [8, 6] : []);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        if (warn) {
-          ctx.fillStyle = PALETTE.red;
-          ctx.font = '900 12px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('站会激光!', xBot, PLAYER_Y - 70);
+          ctx.beginPath();
+          ctx.arc(xTop, topY + 6, 2 + prog * 5, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // 发射：外发光 + 主光柱 + 白色内芯（宽度抖动）
+          const life = h.activeTimer;
+          const jitter = 0.85 + 0.15 * Math.sin(t * 90 + i);
+          ctx.globalAlpha = 0.28;
+          ctx.fillStyle = beamColor;
+          column(h.halfWidth * 1.9 * jitter);
+          ctx.fill();
+          ctx.globalAlpha = 0.9;
+          column(h.halfWidth * jitter);
+          ctx.fill();
+          ctx.strokeStyle = PALETTE.ink;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = PALETTE.paper;
+          column(h.halfWidth * 0.36 * jitter);
+          ctx.fill();
+          // 顶端光斑 + 底部冲击圈
+          ctx.fillStyle = PALETTE.paper;
+          ctx.beginPath();
+          ctx.arc(xTop, topY + 4, 14 * jitter, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = Math.min(1, life / 0.2);
+          ctx.strokeStyle = beamColor;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.ellipse(xBot, PLAYER_Y + 18, h.halfWidth * 1.6 + (1 - life / 0.42) * 30, 10, 0, 0, Math.PI * 2);
+          ctx.stroke();
         }
         ctx.restore();
       } else {
@@ -316,25 +371,64 @@ export class Renderer {
         const s = depthScale(h.y);
         const r = h.halfWidth * s;
         ctx.save();
-        ctx.fillStyle = warn ? `rgba(255, 51, 102, ${(0.15 + 0.25 * prog).toFixed(3)})` : 'rgba(255, 230, 0, 0.75)';
-        ctx.beginPath();
-        ctx.ellipse(x, h.y + 6, r, r * 0.42, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = PALETTE.red;
-        ctx.lineWidth = 3;
-        ctx.stroke();
         if (warn) {
-          // 收缩倒计时圈
-          ctx.strokeStyle = PALETTE.yellow;
+          // 落点：红色危险区 + 收缩圈 + 旋转瞄准框
+          ctx.fillStyle = `rgba(255, 51, 102, ${(0.12 + 0.22 * prog).toFixed(3)})`;
+          ctx.beginPath();
+          ctx.ellipse(x, h.y + 6, r, r * 0.42, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = PALETTE.red;
           ctx.lineWidth = 2.5;
+          ctx.stroke();
+          ctx.strokeStyle = PALETTE.yellow;
+          ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.ellipse(x, h.y + 6, r * (1 - prog * 0.85), r * 0.42 * (1 - prog * 0.85), 0, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.fillStyle = PALETTE.paper;
-          ctx.font = '900 12px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('改稿炸弹', x, h.y - 18);
+          ctx.translate(x, h.y + 6);
+          ctx.scale(1, 0.42);
+          ctx.rotate(t * 3);
+          ctx.strokeStyle = PALETTE.red;
+          ctx.lineWidth = 4;
+          for (let k = 0; k < 4; k++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath();
+            ctx.arc(0, 0, r + 8, -0.35, 0.35);
+            ctx.stroke();
+          }
+          ctx.restore();
+          ctx.save();
+          // 炸弹从 Boss 处抛物线砸下来
+          const ease = prog * prog;
+          const sx = projectX(boss.active ? boss.laneX : h.laneX, boss.active ? boss.y : TRACK_TOP_Y);
+          const sy = boss.active ? boss.y + 20 : TRACK_TOP_Y;
+          const bxp = sx + (x - sx) * ease;
+          const byp = sy + (h.y - sy) * ease - Math.sin(prog * Math.PI) * 90;
+          const bs = 10 + 6 * ease;
+          ctx.fillStyle = PALETTE.ink;
+          ctx.beginPath();
+          ctx.arc(bxp, byp, bs, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#4A4F66';
+          ctx.beginPath();
+          ctx.arc(bxp - bs * 0.35, byp - bs * 0.35, bs * 0.35, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = PALETTE.coffee;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(bxp + bs * 0.5, byp - bs * 0.7);
+          ctx.quadraticCurveTo(bxp + bs, byp - bs * 1.4, bxp + bs * 0.6, byp - bs * 1.8);
+          ctx.stroke();
+          ctx.fillStyle = Math.floor(t * 20) % 2 === 0 ? PALETTE.yellow : PALETTE.red;
+          ctx.beginPath();
+          ctx.arc(bxp + bs * 0.6, byp - bs * 1.8, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.globalAlpha = Math.min(1, h.activeTimer / 0.18);
+          ctx.fillStyle = PALETTE.yellow;
+          ctx.beginPath();
+          ctx.ellipse(x, h.y + 6, r * 1.2, r * 0.55, 0, 0, Math.PI * 2);
+          ctx.fill();
         }
         ctx.restore();
       }
@@ -510,6 +604,46 @@ export class Renderer {
     }
   }
 
+  /** 色弱模式纹理：坏门 = 粗交叉斜纹，好门 = 波点（在门体裁剪区域内绘制） */
+  private drawColorblindPattern(
+    ctx: CanvasRenderingContext2D,
+    bad: boolean,
+    x0: number,
+    y0: number,
+    w: number,
+    h: number,
+    s: number
+  ): void {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    if (bad) {
+      ctx.strokeStyle = PALETTE.paper;
+      ctx.lineWidth = 2.2 * s;
+      ctx.beginPath();
+      const step = 12 * s;
+      for (let rx = x0 - h; rx < x0 + w + h; rx += step) {
+        ctx.moveTo(rx, y0 + h);
+        ctx.lineTo(rx + h, y0);
+        ctx.moveTo(rx, y0);
+        ctx.lineTo(rx + h, y0 + h);
+      }
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = PALETTE.paper;
+      const step = 11 * s;
+      ctx.beginPath();
+      for (let yy = y0 + step * 0.5; yy < y0 + h; yy += step) {
+        const odd = Math.round((yy - y0) / step) % 2;
+        for (let xx = x0 + step * (odd ? 1 : 0.5); xx < x0 + w; xx += step) {
+          ctx.moveTo(xx + 2.2 * s, yy);
+          ctx.arc(xx, yy, 2.2 * s, 0, Math.PI * 2);
+        }
+      }
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   private drawMathGate(
     ctx: CanvasRenderingContext2D,
     g: Gate,
@@ -630,6 +764,7 @@ export class Renderer {
       }
       ctx.stroke();
     }
+    if (this.colorblind) this.drawColorblindPattern(ctx, g.op === '-' || g.op === '÷', x0, y0, w, h, s);
     ctx.restore();
 
     if (shootable) {
@@ -843,24 +978,101 @@ export class Renderer {
       const t = world.state.elapsedSec;
       const vib = Math.sin(boss.ringPhase) * (boss.enraged ? 4.2 : 2.2);
       const pulse = 1 + Math.sin(t * (boss.enraged ? 12 : 6)) * 0.03;
+      const accent = BOSS_ACCENT[boss.style];
+      const WIND = 0.4;
+      const windK =
+        boss.dying <= 0 && boss.landed && boss.shieldTimer <= 0 && boss.attackTimer < WIND
+          ? 1 - Math.max(0, boss.attackTimer) / WIND
+          : 0;
+      const fireK = boss.fireFlash / 0.22;
+      const dieShakeX = boss.dying > 0 ? (Math.random() - 0.5) * 12 : 0;
+      const dieShakeY = boss.dying > 0 ? (Math.random() - 0.5) * 8 : 0;
+
+      // 蓄力：背后主题色光晕 + 向中心收拢的火星
+      if (windK > 0) {
+        const gr = boss.radius * (1.3 + 0.6 * windK);
+        const g = ctx.createRadialGradient(bx, boss.y, boss.radius * 0.3, bx, boss.y, gr);
+        g.addColorStop(0, accent + 'CC');
+        g.addColorStop(1, accent + '00');
+        ctx.globalAlpha = 0.25 + 0.6 * windK;
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(bx, boss.y, gr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2 + t * 4;
+          const rr = boss.radius * (2.1 - 1.4 * windK);
+          ctx.fillStyle = k % 2 ? accent : PALETTE.paper;
+          ctx.beginPath();
+          ctx.arc(bx + Math.cos(a) * rr, boss.y + Math.sin(a) * rr * 0.7, 3 + 3 * windK, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // 扇形弹：提前画出虚线弹道
+        const next = world.bosses.peekNextMove();
+        if (next && next.startsWith('fan')) {
+          const count = next === 'fan3' ? 3 : next === 'fan5' ? 5 : 7;
+          const spread = next === 'fan3' ? 0.42 : next === 'fan5' ? 0.62 : 0.86;
+          const base = Math.atan2(world.squad.leaderLaneX - boss.laneX, PLAYER_Y - boss.y);
+          ctx.strokeStyle = accent;
+          ctx.globalAlpha = 0.25 + 0.5 * windK;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([8, 10]);
+          ctx.lineDashOffset = -t * 80;
+          for (let k = 0; k < count; k++) {
+            const a = base - spread / 2 + (k / (count - 1)) * spread;
+            const L = 560;
+            ctx.beginPath();
+            ctx.moveTo(bx, boss.y + 30);
+            ctx.lineTo(projectX(boss.laneX + Math.sin(a) * L, boss.y + Math.cos(a) * L), boss.y + Math.cos(a) * L);
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+        }
+      }
 
       ctx.save();
-      ctx.translate(bx + vib, boss.y);
-      ctx.scale(pulse, 2 - pulse);
+      ctx.translate(bx + vib + dieShakeX, boss.y - fireK * 9 + dieShakeY);
+      const swell = 1 + 0.07 * windK + (boss.dying > 0 ? 0.06 : 0);
+      ctx.scale(pulse * swell, (2 - pulse) * swell);
       const sp = this.sprites.get(BOSS_SPRITES[boss.style]);
       if (sp.loaded || boss.style === 'alarm') {
-        const img =
-          boss.flashTimer > 0
-            ? sp.flashCanvas
-            : boss.enraged && Math.floor(t * 8) % 2 === 0
-              ? sp.rageCanvas
-              : sp.canvas;
+        const img = boss.enraged && Math.floor(t * 8) % 2 === 0 ? sp.rageCanvas : sp.canvas;
         ctx.drawImage(img, -sp.logicalW * 0.5, -sp.logicalH * 0.5, sp.logicalW, sp.logicalH);
+        // 受击闪白：持续被打时整只 Boss 会一直是白的、看不清，改成约 6Hz 闪烁的半透明白色叠层
+        if (boss.flashTimer > 0 && Math.floor(t * 12) % 2 === 0) {
+          ctx.globalAlpha = 0.42;
+          ctx.drawImage(sp.flashCanvas, -sp.logicalW * 0.5, -sp.logicalH * 0.5, sp.logicalW, sp.logicalH);
+          ctx.globalAlpha = 1;
+        }
       } else {
         // 图片加载失败时的矢量兜底
         this.drawVectorBoss(ctx, boss, t);
       }
       ctx.restore();
+
+      // 出招闪光：Boss 下方炸开一圈星芒
+      if (fireK > 0) {
+        const mx = bx;
+        const my = boss.y + boss.radius * 0.75;
+        const r = 14 + 26 * (1 - fireK);
+        ctx.globalAlpha = fireK;
+        ctx.fillStyle = PALETTE.paper;
+        ctx.beginPath();
+        for (let k = 0; k < 16; k++) {
+          const a = (k / 16) * Math.PI * 2;
+          const rr = k % 2 === 0 ? r : r * 0.45;
+          ctx.lineTo(mx + Math.cos(a) * rr, my + Math.sin(a) * rr);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = accent;
+        ctx.beginPath();
+        ctx.arc(mx, my, r * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
 
       // 开会免伤护盾
       if (boss.shieldTimer > 0) {
@@ -1158,6 +1370,338 @@ export class Renderer {
     }
   }
 
+  /** Boss 弹幕贴图缓存：本体 + 外发光，按造型和颜色预渲染一次 */
+  private readonly shotCache = new Map<string, { body: HTMLCanvasElement; glow: HTMLCanvasElement }>();
+
+  private getBossShot(kind: BossShotKind, color: string): { body: HTMLCanvasElement; glow: HTMLCanvasElement } {
+    const key = kind + '|' + color;
+    const hit = this.shotCache.get(key);
+    if (hit) return hit;
+    const S = 64;
+    const mk = () => {
+      const c = document.createElement('canvas');
+      c.width = c.height = S;
+      return c;
+    };
+    const glow = mk();
+    const gg = glow.getContext('2d')!;
+    const grad = gg.createRadialGradient(32, 32, 2, 32, 32, 32);
+    grad.addColorStop(0, color);
+    grad.addColorStop(0.35, color + 'AA');
+    grad.addColorStop(1, color + '00');
+    gg.fillStyle = grad;
+    gg.fillRect(0, 0, S, S);
+
+    const body = mk();
+    const g = body.getContext('2d')!;
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    const ink = PALETTE.ink;
+    if (kind === 'bellwave') {
+      // 三道向前凸的声波弧：一排排开时连成一面「声浪墙」
+      for (const [r, w] of [[12, 4], [20, 5], [28, 4]] as const) {
+        g.strokeStyle = ink;
+        g.lineWidth = w + 4;
+        g.beginPath();
+        g.arc(32, 6, r, Math.PI * 0.12, Math.PI * 0.88);
+        g.stroke();
+        g.strokeStyle = color;
+        g.lineWidth = w;
+        g.stroke();
+      }
+    } else if (kind === 'slide') {
+      // 一页 PPT：紫色标题栏 + 文字行 + 小柱状图
+      g.fillStyle = '#E9FDFF';
+      g.strokeStyle = ink;
+      g.lineWidth = 3;
+      g.beginPath();
+      g.roundRect(10, 15, 44, 34, 4);
+      g.fill();
+      g.stroke();
+      g.fillStyle = PALETTE.purple;
+      g.fillRect(11.5, 16.5, 41, 7);
+      g.fillStyle = '#9AA0B8';
+      g.fillRect(15, 28, 18, 3);
+      g.fillRect(15, 34, 14, 3);
+      g.fillStyle = color;
+      g.fillRect(38, 36, 4, 9);
+      g.fillRect(44, 31, 4, 14);
+      g.strokeStyle = ink;
+      g.lineWidth = 1.5;
+      g.strokeRect(38, 36, 4, 9);
+      g.strokeRect(44, 31, 4, 14);
+    } else if (kind === 'note') {
+      // 便利贴：折角 + 潦草红字
+      g.fillStyle = color;
+      g.strokeStyle = ink;
+      g.lineWidth = 3;
+      g.beginPath();
+      g.moveTo(14, 14);
+      g.lineTo(50, 14);
+      g.lineTo(50, 40);
+      g.lineTo(40, 50);
+      g.lineTo(14, 50);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      g.fillStyle = 'rgba(15,17,26,0.25)';
+      g.beginPath();
+      g.moveTo(50, 40);
+      g.lineTo(40, 40);
+      g.lineTo(40, 50);
+      g.closePath();
+      g.fill();
+      g.strokeStyle = PALETTE.red;
+      g.lineWidth = 2.5;
+      g.beginPath();
+      g.moveTo(19, 24);
+      g.quadraticCurveTo(26, 19, 33, 25);
+      g.quadraticCurveTo(39, 30, 45, 23);
+      g.moveTo(19, 34);
+      g.lineTo(36, 34);
+      g.stroke();
+    } else if (kind === 'fireball') {
+      // 火尾在后（本地 -y），火球在前
+      g.fillStyle = '#FF3366';
+      g.strokeStyle = ink;
+      g.lineWidth = 2.5;
+      g.beginPath();
+      g.moveTo(20, 30);
+      g.quadraticCurveTo(24, 10, 32, 2);
+      g.quadraticCurveTo(40, 10, 44, 30);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      const fg = g.createRadialGradient(30, 36, 2, 32, 38, 16);
+      fg.addColorStop(0, '#FFF7B0');
+      fg.addColorStop(0.45, PALETTE.yellow);
+      fg.addColorStop(1, color);
+      g.fillStyle = fg;
+      g.beginPath();
+      g.arc(32, 38, 15, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+    } else {
+      // KPI 金币
+      g.fillStyle = color;
+      g.strokeStyle = ink;
+      g.lineWidth = 3;
+      g.beginPath();
+      g.arc(32, 32, 20, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.strokeStyle = '#B9821A';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(32, 32, 14, 0, Math.PI * 2);
+      g.stroke();
+      g.fillStyle = ink;
+      g.font = '900 15px sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText('K', 32, 33);
+      g.fillStyle = 'rgba(255,255,255,0.55)';
+      g.beginPath();
+      g.ellipse(25, 24, 5, 3, -0.6, 0, Math.PI * 2);
+      g.fill();
+    }
+    const out = { body, glow };
+    this.shotCache.set(key, out);
+    return out;
+  }
+
+  /** 墨渍贴图缓存：每种颜色 3 种形状，预渲染一次后直接贴图 */
+  private readonly splatCache = new Map<string, HTMLCanvasElement[]>();
+
+  private getSplats(color: string): HTMLCanvasElement[] {
+    let list = this.splatCache.get(color);
+    if (list) return list;
+    list = [];
+    for (let v = 0; v < 3; v++) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 96;
+      const g = c.getContext('2d')!;
+      let seed = 17 + v * 31 + color.length * 7;
+      const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+      g.fillStyle = color;
+      g.beginPath();
+      // 不规则主斑块
+      for (let k = 0; k <= 14; k++) {
+        const a = (k / 14) * Math.PI * 2;
+        const r = 26 + rnd() * 12;
+        const x = 48 + Math.cos(a) * r;
+        const y = 48 + Math.sin(a) * r * 0.62;
+        if (k === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      }
+      g.closePath();
+      g.fill();
+      // 溅射小点
+      for (let k = 0; k < 7; k++) {
+        const a = rnd() * Math.PI * 2;
+        const d = 34 + rnd() * 12;
+        g.beginPath();
+        g.arc(48 + Math.cos(a) * d, 48 + Math.sin(a) * d * 0.62, 2 + rnd() * 4, 0, Math.PI * 2);
+        g.fill();
+      }
+      // 深色内芯，增加层次
+      g.globalAlpha = 0.28;
+      g.fillStyle = PALETTE.ink;
+      g.beginPath();
+      g.ellipse(48, 48, 14, 9, 0, 0, Math.PI * 2);
+      g.fill();
+      list.push(c);
+    }
+    this.splatCache.set(color, list);
+    return list;
+  }
+
+  private drawDecals(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    const decals = world.fx.decals;
+    for (let i = 0; i < decals.length; i++) {
+      const d = decals[i];
+      if (d.life >= d.maxLife || d.y > TRACK_BOTTOM_Y + 30) continue;
+      const fadeIn = Math.min(1, d.life / 0.08);
+      const fadeOut = 1 - Math.max(0, (d.life - d.maxLife * 0.55) / (d.maxLife * 0.45));
+      ctx.globalAlpha = 0.5 * fadeIn * fadeOut;
+      const img = this.getSplats(d.color)[d.variant];
+      const sz = d.size * depthScale(d.y) * (0.75 + 0.25 * fadeIn);
+      ctx.translate(d.x, d.y);
+      ctx.rotate(d.rot);
+      ctx.drawImage(img, -sz, -sz * 0.62, sz * 2, sz * 1.24);
+      ctx.rotate(-d.rot);
+      ctx.translate(-d.x, -d.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** 死亡爆开：白闪放大消散 + 冲击波圈；以及 Boss 招式 / 登场 / 死亡的爆炸冲击波 */
+  private drawDeathPops(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    const blasts = world.fx.blasts;
+    for (let i = 0; i < blasts.length; i++) {
+      const b = blasts[i];
+      const k = b.t / b.dur;
+      const e = 1 - (1 - k) * (1 - k);
+      const r = b.r * (0.25 + 0.9 * e);
+      ctx.globalAlpha = (1 - k) * 0.55;
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.ellipse(b.x, b.y, r * 0.8, r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 9 * (1 - k) + 1;
+      ctx.beginPath();
+      ctx.ellipse(b.x, b.y, r, r * 0.62, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = PALETTE.paper;
+      ctx.lineWidth = 5 * (1 - k) + 0.5;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    const pops = world.fx.pops;
+    for (let i = 0; i < pops.length; i++) {
+      const p = pops[i];
+      const k = p.t / p.dur;
+      const sp = this.getEnemySprite(p.configId);
+      const s = depthScale(p.y) * (1 + k * (p.big ? 0.9 : 0.6));
+      const w = sp.logicalW * s;
+      const h = sp.logicalH * s;
+      ctx.globalAlpha = 1 - k;
+      ctx.drawImage(sp.flashCanvas, p.x - w / 2, p.y - h / 2, w, h);
+      ctx.strokeStyle = p.big ? PALETTE.yellow : PALETTE.paper;
+      ctx.lineWidth = (p.big ? 5 : 3) * (1 - k);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, (p.big ? 30 : 14) + k * (p.big ? 46 : 22), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** 屏幕级冲击：速度线、白闪、尸潮警报、清屏 / 里程碑印章 */
+  private drawImpactOverlay(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    const fx = world.fx;
+    const st = world.state;
+    const t = st.elapsedSec;
+
+    // 高连杀速度线：从屏幕两侧向内收束
+    if (st.phase === 'PLAYING' && st.comboCount >= 25) {
+      const k = Math.min(1, (st.comboCount - 25) / 50);
+      ctx.strokeStyle = `rgba(255, 230, 0, ${(0.1 + 0.18 * k).toFixed(3)})`;
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 14; i++) {
+        const y = ((i * 97 + t * 900) % (DESIGN_H + 200)) - 100;
+        const len = 40 + ((i * 53) % 60);
+        const side = i % 2 === 0 ? 0 : DESIGN_W;
+        const dir = i % 2 === 0 ? 1 : -1;
+        ctx.beginPath();
+        ctx.moveTo(side, y);
+        ctx.lineTo(side + dir * (22 + 20 * k), y + len);
+        ctx.stroke();
+      }
+    }
+
+    if (fx.flash > 0) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${(fx.flash / 0.08) * 0.35})`;
+      ctx.fillRect(0, 0, DESIGN_W, DESIGN_H);
+    }
+
+    if (fx.surgeBanner > 0) {
+      // 跑道顶端一条细窄的闪烁警报带 + 两侧泛红；不横在怪物进场的中段
+      const k = fx.surgeBanner;
+      const a = Math.min(1, k / 0.3);
+      const blink = Math.floor(t * 10) % 2 === 0;
+      ctx.save();
+      ctx.globalAlpha = a;
+      const g = ctx.createLinearGradient(0, 0, 40, 0);
+      g.addColorStop(0, 'rgba(255, 51, 102, 0.45)');
+      g.addColorStop(1, 'rgba(255, 51, 102, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, TRACK_TOP_Y, 40, TRACK_BOTTOM_Y - TRACK_TOP_Y);
+      ctx.save();
+      ctx.translate(DESIGN_W, 0);
+      ctx.scale(-1, 1);
+      ctx.fillRect(0, TRACK_TOP_Y, 40, TRACK_BOTTOM_Y - TRACK_TOP_Y);
+      ctx.restore();
+      ctx.fillStyle = blink ? PALETTE.red : '#C2143F';
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(DESIGN_W * 0.5 - 120, TRACK_TOP_Y + 2, 240, 26, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = PALETTE.yellow;
+      ctx.font = '900 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      drawRichText(ctx, '{i:warning} 未读 99+ 尸潮来袭!', DESIGN_W * 0.5, TRACK_TOP_Y + 15.5);
+      ctx.restore();
+    }
+
+    const sf = fx.stampFx;
+    if (sf) {
+      const p = sf.t / sf.dur;
+      const scale = p < 0.12 ? 2 - (p / 0.12) * 1.0 : 1;
+      const alpha = p > 0.75 ? (1 - p) / 0.25 : 1;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.translate(DESIGN_W * 0.5, PLAYER_Y + world.squad.footprintTopDy - 78);
+      ctx.rotate(-0.08);
+      ctx.scale(scale, scale);
+      ctx.font = '900 34px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 9;
+      ctx.strokeText(sf.text, 3, 3);
+      ctx.strokeText(sf.text, 0, 0);
+      ctx.fillStyle = sf.color;
+      ctx.fillText(sf.text, 0, 0);
+      ctx.restore();
+    }
+  }
+
   private getEnemySprite(id: Enemy['configId']): CachedSprite {
     switch (id) {
       case 'cc_all':
@@ -1169,6 +1713,8 @@ export class Renderer {
         return this.sprites.get('enemyPptGolem');
       case 'ddl_flame':
         return this.sprites.get('enemyDdlFlame');
+      case 'unread_dot':
+        return this.sprites.get('enemyUnread');
       default:
         return this.sprites.get('enemyZombie');
     }
@@ -1374,20 +1920,32 @@ export class Renderer {
       if (!p.active) continue;
       const s = depthScale(p.y);
       const sx = projectX(p.laneX, p.y);
-      const r = p.radius * s;
-
-      ctx.fillStyle = p.color;
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.arc(sx, p.y, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = PALETTE.yellow;
-      ctx.beginPath();
-      ctx.arc(sx, p.y, r * 0.44, 0, Math.PI * 2);
-      ctx.fill();
+      const size = p.radius * (p.kind === 'bellwave' ? 3.6 : p.kind === 'fireball' ? 3.3 : 2.7) * s;
+      const sp = this.getBossShot(p.kind, p.color);
+      // 拖尾残影
+      for (let k = 3; k >= 1; k--) {
+        const gx = projectX(p.laneX - p.vx * 0.03 * k, p.y - p.vy * 0.03 * k);
+        const gy = p.y - p.vy * 0.03 * k;
+        const gs = size * (1.5 - k * 0.18);
+        ctx.globalAlpha = 0.32 / k;
+        ctx.drawImage(sp.glow, gx - gs / 2, gy - gs / 2, gs, gs);
+      }
+      // 外发光（呼吸）
+      const breathe = 1 + 0.12 * Math.sin(p.age * 14 + i);
+      const gsz = size * 1.9 * breathe;
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(sp.glow, sx - gsz / 2, p.y - gsz / 2, gsz, gsz);
+      ctx.globalAlpha = 1;
+      // 本体：铃声波 / 火球朝飞行方向；便利贴 / 幻灯片自转；金币翻转
+      const heading = Math.atan2(p.vy, p.vx) - Math.PI / 2;
+      ctx.save();
+      ctx.translate(sx, p.y);
+      if (p.kind === 'bellwave' || p.kind === 'fireball') ctx.rotate(heading);
+      else if (p.kind !== 'coin') ctx.rotate(p.rot);
+      const flip = p.kind === 'coin' ? Math.max(0.18, Math.abs(Math.cos(p.rot))) : 1;
+      if (flip !== 1) ctx.scale(flip, 1);
+      ctx.drawImage(sp.body, -size / 2, -size / 2, size, size);
+      ctx.restore();
     }
   }
 
@@ -1425,19 +1983,19 @@ export class Renderer {
       ctx.restore();
     }
 
+    // 粒子：逐个手动逆变换还原，避免每粒子 save/restore 的开销（大批割草时粒子很多）
     const particles = world.particles.activeItems;
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 1.6;
     for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
       if (!p.active) continue;
       const alpha = Math.max(0, 1 - p.life / p.maxLife);
-      ctx.save();
       ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      const s = p.size * (0.4 + 0.7 * alpha);
       ctx.translate(p.x, p.y);
       ctx.rotate(p.rot);
-      ctx.fillStyle = p.color;
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 1.6;
-      const s = p.size * (0.4 + 0.7 * alpha);
       if (p.shape === 'star') {
         ctx.beginPath();
         for (let k = 0; k < 4; k++) {
@@ -1452,8 +2010,10 @@ export class Renderer {
         ctx.fillRect(-s * 0.5, -s * 0.5, s, s);
         ctx.strokeRect(-s * 0.5, -s * 0.5, s, s);
       }
-      ctx.restore();
+      ctx.rotate(-p.rot);
+      ctx.translate(-p.x, -p.y);
     }
+    ctx.globalAlpha = 1;
 
     const texts = world.floatingTexts.activeItems;
     for (let i = 0; i < texts.length; i++) {
@@ -1511,12 +2071,14 @@ export class Renderer {
       }
     }
 
-    // 高压过载状态顶部提醒
-    if (state.phase === 'PLAYING' && state.overloadEnemyTimer > 0) {
+    // 底部状态带（小队脚下）：高压过载计时 / 连杀；拾取横幅出现时让位
+    const statusY = 742;
+    const bannerOn = !!state.banner;
+    if (state.phase === 'PLAYING' && state.overloadEnemyTimer > 0 && !bannerOn) {
       this.drawSticker(
         ctx,
-        DESIGN_W * 0.5,
-        122,
+        100,
+        statusY,
         `{i:bolt} 高压过载 · 怪物狂飙 ${state.overloadEnemyTimer.toFixed(1)}s`,
         PALETTE.purple,
         PALETTE.yellow,
@@ -1525,10 +2087,10 @@ export class Renderer {
     }
 
     // 实时连杀贴纸徽章（放在顶部工作群通知与 Boss 血条下方，避免遮挡）
-    if (state.phase === 'PLAYING' && state.comboCount >= 5) {
+    if (state.phase === 'PLAYING' && state.comboCount >= 5 && !bannerOn) {
       const pop = 1 + Math.min(0.15, (state.comboTimer / 2.4) * 0.12);
       ctx.save();
-      ctx.translate(DESIGN_W - 62, 198);
+      ctx.translate(DESIGN_W - 62, statusY);
       ctx.rotate(0.06);
       ctx.scale(pop, pop);
 
@@ -1619,8 +2181,8 @@ export class Renderer {
       const scale = 0.6 + 0.4 * (1 - Math.pow(1 - inT, 3)) + (inT < 1 ? 0 : 0);
       ctx.save();
       ctx.globalAlpha = outA;
-      ctx.translate(DESIGN_W * 0.5, 268);
-      ctx.rotate(-0.03);
+      ctx.translate(DESIGN_W * 0.5, 734);
+      ctx.rotate(-0.02);
       ctx.scale(scale, scale);
       ctx.fillStyle = PALETTE.ink;
       ctx.beginPath();

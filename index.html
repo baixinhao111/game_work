@@ -40,24 +40,24 @@
           <span class="progress-time" id="hud-clock">09:00</span>
         </div>
 
-        <!-- 工作群消息通知卡片（CHAT 通道） -->
-        <div class="quip-chat hidden" id="quip-banner" data-tone="sass" role="status" aria-live="polite">
-          <div class="quip-chat-avatar" id="quip-avatar">
-            <span id="quip-avatar-icon"><i data-ic="chat"></i></span>
-            <i class="quip-unread-dot" aria-hidden="true"></i>
-          </div>
-          <div class="quip-chat-body">
-            <div class="quip-chat-meta">
-              <span class="quip-chat-sender" id="quip-sender">摸鱼战神群 (99+)</span>
-              <span class="quip-chat-tag" id="quip-tag">@你</span>
-              <span class="quip-chat-time">刚刚</span>
-            </div>
-            <div class="quip-chat-text" id="quip-text"></div>
-          </div>
-        </div>
-
         <!-- 右下角大招打卡按钮 -->
         <div class="hud-bottom">
+          <!-- 工作群消息：放在底部左侧，不遮挡怪物进场区域 -->
+          <div class="quip-chat hidden" id="quip-banner" data-tone="sass" role="status" aria-live="polite">
+            <div class="quip-chat-avatar" id="quip-avatar">
+              <span id="quip-avatar-icon"><i data-ic="chat"></i></span>
+              <i class="quip-unread-dot" aria-hidden="true"></i>
+            </div>
+            <div class="quip-chat-body">
+              <div class="quip-chat-meta">
+                <span class="quip-chat-sender" id="quip-sender">摸鱼战神群 (99+)</span>
+                <span class="quip-chat-tag" id="quip-tag">@你</span>
+                <span class="quip-chat-time">刚刚</span>
+              </div>
+              <div class="quip-chat-text" id="quip-text"></div>
+            </div>
+          </div>
+
           <button type="button" class="ult-btn" id="btn-ult" disabled>
             <span class="ult-fill" id="ult-fill"></span>
             <span class="ult-label" id="ult-label">18:00 下班 0%</span>
@@ -66,64 +66,73 @@
       </div>
 
       <!-- 主菜单启动页 -->
-      <div id="menu-overlay" class="overlay-screen">
-        <div class="menu-card">
-          <div class="sticky-tag">NEO-POP 反内卷爽游</div>
-          <h1 class="game-title">
-            周一突围
-            <span class="title-sub">DDL FRONTLINE</span>
-          </h1>
-          <div class="menu-hero-duo">
-            <img class="menu-avatar" src="./assets/sprites/hero_slacker.webp" alt="摸鱼战士" />
-            <span class="vs-badge">VS</span>
-            <img class="menu-avatar" src="./assets/sprites/enemy_zombie.webp" alt="加班丧尸" />
-            <img class="menu-avatar boss" id="menu-boss-img" src="./assets/sprites/boss_alarm.webp" alt="关底 Boss" />
-          </div>
-          <p class="title-slogan">单指划开加班丧尸潮，狂射红门洗白成准点下班！</p>
-
-          <div class="menu-stats">
-            <div class="stat-chip">
-              <span class="stat-label"><i data-ic="bean"></i> 咖啡豆</span>
-              <span class="stat-val" id="menu-beans">0</span>
-            </div>
-            <div class="stat-chip">
-              <span class="stat-label"><i data-ic="squad"></i> 最高小队</span>
-              <span class="stat-val" id="menu-best-squad">0</span>
-            </div>
-            <div class="stat-chip">
-              <span class="stat-label"><i data-ic="calendar"></i> 已通关</span>
-              <span class="stat-val" id="menu-clears">0 次</span>
+      <div id="menu-overlay" class="overlay-screen menu-screen">
+        <div class="menu-scroll">
+          <!-- 顶栏：工牌（职级 + 经验）· 咖啡豆 · 设置 -->
+          <div class="menu-topbar">
+            <button type="button" class="rank-card" id="rank-card" aria-label="职级与同事名册">
+              <span class="rank-avatar" id="rank-avatar"><img src="./assets/sprites/hero_slacker.webp" alt="" /></span>
+              <span class="rank-info">
+                <span class="rank-line"><b class="rank-title" id="rank-title">实习生</b><span class="rank-no" id="rank-no">NO.0000</span></span>
+                <span class="xp-track"><span class="xp-fill" id="rank-xp-fill"></span></span>
+                <span class="rank-next" id="rank-next">距「专员」还差 120</span>
+              </span>
+            </button>
+            <div class="menu-top-actions">
+              <span class="bean-chip"><i data-ic="bean"></i><b id="menu-beans">0</b></span>
+              <button type="button" class="icon-btn light" id="btn-settings" aria-label="设置"><i data-ic="gear"></i></button>
             </div>
           </div>
 
-          <div class="day-picker" id="day-picker" role="tablist" aria-label="选择关卡"></div>
-
-          <div class="stage-preview">
-            <div class="stage-day" id="stage-day">DAY 01 · 周一</div>
-            <div class="stage-name" id="stage-name">早八噩梦（高密度尸潮版）</div>
-            <div class="stage-boss" id="stage-boss">关底 Boss：07:00 早高峰地狱闹钟</div>
+          <!-- 标题与对阵 -->
+          <div class="menu-hero">
+            <div class="sticky-tag">NEO-POP 反内卷爽游</div>
+            <h1 class="game-title on-dark">周一突围<span class="title-sub">DDL FRONTLINE</span></h1>
+            <div class="hero-versus">
+              <img class="hero-me" src="./assets/sprites/hero_slacker.webp" alt="摸鱼战士" />
+              <span class="vs-badge">VS</span>
+              <img class="hero-boss" id="menu-boss-img" src="./assets/sprites/boss_alarm.webp" alt="关底 Boss" />
+            </div>
           </div>
 
-          <button type="button" class="cta-btn" id="btn-start">
-            打卡上班 · 开始突围
+          <!-- 章节与选关 -->
+          <div class="chapter-panel">
+            <div class="chapter-head">
+              <span class="chapter-name" id="chapter-name">第一章 · 入职第一周</span>
+              <span class="chapter-progress" id="menu-clears">0/5</span>
+            </div>
+            <div class="day-picker" id="day-picker" role="tablist" aria-label="选择关卡"></div>
+            <div class="stage-preview">
+              <div class="stage-day" id="stage-day">DAY 01 · 周一</div>
+              <div class="stage-name" id="stage-name">早八噩梦（高密度尸潮版）</div>
+              <div class="stage-boss" id="stage-boss">关底 Boss：07:00 早高峰地狱闹钟</div>
+            </div>
+          </div>
+
+          <!-- 出战同事 -->
+          <button type="button" class="char-slot" id="char-slot">
+            <span class="char-slot-avatar" id="char-slot-avatar"><img src="./assets/sprites/hero_slacker.webp" alt="" /></span>
+            <span class="char-slot-info">
+              <span class="char-slot-label">出战同事</span>
+              <b id="char-slot-name">摸鱼实习生</b>
+              <small id="char-slot-sub">订书机速射 · 大招「准点下班」</small>
+            </span>
+            <span class="char-slot-next" id="char-slot-next"></span>
           </button>
 
-          <div class="menu-extra-row">
-            <button type="button" class="endless-btn" id="btn-endless">
-              <i data-ic="moon"></i> 周末无尽加班
-              <small id="endless-best-hint">最高 第0波</small>
-            </button>
-            <button type="button" class="secondary-btn talent-entry" id="btn-talents">
-              <i data-ic="cup"></i> 摸鱼天赋 <span class="talent-entry-hint" id="talent-entry-hint"></span>
-            </button>
-          </div>
+          <button type="button" class="cta-btn big" id="btn-start">打卡上班 · 开始突围</button>
 
-          <button type="button" class="ghost-btn badge-entry-btn" id="btn-badges">
-            <i data-ic="idcard"></i> 工牌图鉴 <span id="badge-count-hint">0/6</span>
-          </button>
-
-          <div class="control-tips">
-            <span><i data-ic="hand"></i> 左右拖拽 · <i data-ic="target"></i> 实心靶门/空投可射 · 虚线光幕子弹直穿</span>
+          <!-- 入口栏：按进度逐个出现 -->
+          <div class="menu-dock" id="menu-dock">
+            <button type="button" class="dock-btn" id="btn-endless">
+              <i data-ic="moon"></i><span>无尽加班</span><small id="endless-best-hint">无限波次</small>
+            </button>
+            <button type="button" class="dock-btn" id="btn-talents">
+              <i data-ic="cup"></i><span>摸鱼天赋</span><small class="dock-dot" id="talent-entry-hint"></small>
+            </button>
+            <button type="button" class="dock-btn" id="btn-badges">
+              <i data-ic="idcard"></i><span>工牌图鉴</span><small id="badge-count-hint">0/6</small>
+            </button>
           </div>
         </div>
       </div>
@@ -161,6 +170,7 @@
           <div class="modal-actions">
             <button type="button" class="cta-btn" id="btn-resume">继续摸鱼</button>
             <button type="button" class="secondary-btn" id="btn-restart-pause">重新打卡</button>
+            <button type="button" class="ghost-btn" id="btn-settings-pause"><i data-ic="gear"></i> 设置</button>
             <button type="button" class="ghost-btn" id="btn-home-pause">返回工位主页</button>
           </div>
         </div>
@@ -172,34 +182,54 @@
           <div class="sticky-tag" id="result-rank-tag">SSR · 工位赛博战神</div>
           <h2 class="modal-title" id="result-title">18:00 准点下班！</h2>
           <p class="modal-desc" id="result-comment">老板画的饼还没落地，就已经被你全数击碎。</p>
+
+          <div class="result-stats">
+            <div class="rs-cell"><b id="res-max-squad">0</b><small>最大小队</small></div>
+            <div class="rs-cell"><b id="res-kills">0</b><small>击退需求</small></div>
+            <div class="rs-cell"><b id="res-flipped">0</b><small>洗白红门</small></div>
+            <div class="rs-cell bean"><b id="res-beans">+0</b><small>咖啡豆</small></div>
+          </div>
           <div class="new-badges-banner hidden" id="result-new-badges"></div>
 
-          <div class="result-grid">
-            <div class="result-item">
-              <span class="r-label">最大小队</span>
-              <span class="r-val" id="res-max-squad">0</span>
+          <!-- 绩效考核：经验明细 + 职级进度条 -->
+          <div class="panel xp-panel">
+            <div class="panel-head"><span><i data-ic="stamp"></i> 绩效考核</span><b class="xp-total" id="xp-total">+0</b></div>
+            <ul class="xp-lines" id="xp-lines"></ul>
+            <div class="xp-rank-row">
+              <span class="xp-rank" id="xp-rank">实习生</span>
+              <span class="xp-count" id="xp-count">0 / 120</span>
             </div>
-            <div class="result-item">
-              <span class="r-label">驳回红门</span>
-              <span class="r-val" id="res-flipped">0 次</span>
-            </div>
-            <div class="result-item">
-              <span class="r-label">击退需求</span>
-              <span class="r-val" id="res-kills">0</span>
-            </div>
-            <div class="result-item highlight">
-              <span class="r-label">赚取咖啡豆</span>
-              <span class="r-val" id="res-beans">+0 <i data-ic="bean"></i></span>
-            </div>
+            <div class="xp-track big"><span class="xp-fill" id="xp-fill"></span><span class="xp-gain" id="xp-gain"></span></div>
           </div>
 
-          <div class="modal-actions">
-            <button type="button" class="poster-btn" id="btn-poster"><i data-ic="camera"></i> 生成今日摸鱼战报</button>
-            <button type="button" class="cta-btn hidden" id="btn-next-day">下一天 ▶</button>
-            <button type="button" class="cta-btn" id="btn-retry">再来一局</button>
-            <button type="button" class="secondary-btn" id="btn-talents-result"><i data-ic="cup"></i> 升级天赋</button>
-            <button type="button" class="ghost-btn" id="btn-home-result">返回主页</button>
+          <!-- 本局复盘：构筑 + 伤害来源 -->
+          <div class="panel recap-panel">
+            <div class="panel-head"><span><i data-ic="chart"></i> 本局复盘</span></div>
+            <div class="recap-build" id="recap-build"></div>
+            <div class="recap-bars" id="recap-bars"></div>
           </div>
+
+          <div class="result-actions">
+            <button type="button" class="cta-btn hidden" id="btn-next-day">下一天 ▶</button>
+            <button type="button" class="cta-btn" id="btn-retry"><i data-ic="retry"></i> 再来一局</button>
+            <div class="result-mini-row">
+              <button type="button" class="mini-act poster" id="btn-poster"><i data-ic="camera"></i><span>战报</span></button>
+              <button type="button" class="mini-act" id="btn-talents-result"><i data-ic="cup"></i><span>天赋</span></button>
+              <button type="button" class="mini-act" id="btn-home-result"><i data-ic="home"></i><span>主页</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 升职弹窗 -->
+      <div id="promo-overlay" class="overlay-screen promo-overlay hidden">
+        <div class="promo-card">
+          <div class="promo-burst" aria-hidden="true"></div>
+          <div class="sticky-tag mint">人事任命通知</div>
+          <div class="promo-kicker">恭喜晋升</div>
+          <div class="promo-title" id="promo-title">专员</div>
+          <div class="promo-unlock" id="promo-unlock"></div>
+          <button type="button" class="cta-btn" id="btn-promo-ok">收下任命书</button>
         </div>
       </div>
 
@@ -237,6 +267,56 @@
           <div class="badge-grid" id="badge-grid"></div>
           <div class="modal-actions">
             <button type="button" class="cta-btn" id="btn-badges-close">关闭图鉴</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 设置 -->
+      <div id="settings-overlay" class="overlay-screen hidden">
+        <div class="modal-card settings-card">
+          <div class="sticky-tag">工位设置</div>
+          <h2 class="modal-title">设置</h2>
+          <div class="set-list">
+            <label class="set-row">
+              <span class="set-name"><i data-ic="speaker"></i> 音乐音量</span>
+              <input type="range" min="0" max="100" step="5" id="set-music" />
+              <b class="set-val" id="set-music-val">80%</b>
+            </label>
+            <label class="set-row">
+              <span class="set-name"><i data-ic="burst"></i> 音效音量</span>
+              <input type="range" min="0" max="100" step="5" id="set-sfx" />
+              <b class="set-val" id="set-sfx-val">90%</b>
+            </label>
+            <button type="button" class="set-row toggle" id="set-vibration" aria-pressed="true">
+              <span class="set-name"><i data-ic="bolt"></i> 震动反馈</span>
+              <span class="switch"><i></i></span>
+            </button>
+            <button type="button" class="set-row toggle" id="set-lowfx" aria-pressed="false">
+              <span class="set-name"><i data-ic="cup"></i> 省电画质<small>少粒子、无墨渍、降分辨率，老手机更流畅</small></span>
+              <span class="switch"><i></i></span>
+            </button>
+            <button type="button" class="set-row toggle" id="set-colorblind" aria-pressed="false">
+              <span class="set-name"><i data-ic="target"></i> 色弱友好<small>红门加交叉斜纹，蓝门加波点</small></span>
+              <span class="switch"><i></i></span>
+            </button>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="ghost-btn" id="btn-replay-tutorial"><i data-ic="hand"></i> 重玩新手引导</button>
+            <button type="button" class="cta-btn" id="btn-settings-close">好了</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 同事名册（职级与角色解锁一览） -->
+      <div id="roster-overlay" class="overlay-screen hidden">
+        <div class="modal-card roster-card">
+          <div class="sticky-tag mint">组织架构图</div>
+          <h2 class="modal-title">同事名册</h2>
+          <p class="modal-desc" id="roster-desc">每局结算都涨绩效经验，升职就能解锁新同事。</p>
+          <div class="roster-ranks" id="roster-ranks"></div>
+          <div class="roster-grid" id="roster-grid"></div>
+          <div class="modal-actions">
+            <button type="button" class="cta-btn" id="btn-roster-close">回到工位</button>
           </div>
         </div>
       </div>

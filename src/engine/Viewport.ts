@@ -7,6 +7,8 @@ export const LANE_HALF_W = 160;
 export const LEADER_MAX_X = 142;
 /** 跑道（门、路面刻度）向玩家滚动的速度 px/s */
 export const SCROLL_SPEED = 136;
+/** 开火线：敌人越过这条线（完全淡入画面）后才能被子弹命中，保证每只怪都先被看见再倒下 */
+export const ENGAGE_Y = TRACK_TOP_Y + 28;
 
 export function clamp(val: number, min: number, max: number): number {
   return val < min ? min : val > max ? max : val;
@@ -23,6 +25,8 @@ export function projectX(laneX: number, y: number): number {
 
 export class Viewport {
   public dpr = 1;
+  /** 渲染分辨率上限（省电画质下降到 1.25） */
+  public maxDpr = 2;
   public scale = 1;
   public cssScale = 1;
   public offsetX = 0;
@@ -44,7 +48,7 @@ export class Viewport {
 
     this.cssWidth = Math.max(1, vw);
     this.cssHeight = Math.max(1, vh);
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.dpr = Math.min(window.devicePixelRatio || 1, this.maxDpr);
 
     const backingW = Math.round(this.cssWidth * this.dpr);
     const backingH = Math.round(this.cssHeight * this.dpr);

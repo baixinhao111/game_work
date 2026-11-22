@@ -1,4 +1,5 @@
-import type { SaveData, TalentId } from '../game/types';
+import { backfillXp } from '../data/ranks';
+import type { CharacterId, GameSettings, SaveData, TalentId } from '../game/types';
 import {
   CLIENT_VER_STORAGE,
   getBuildVersion,
@@ -7,7 +8,31 @@ import {
   isClientVersionAtLeast
 } from '../platform/MiniToolBridge';
 
+/** 键名沿用 v3（容器存储里已有数据），版本号写在 data.version 里 */
 const STORAGE_KEY = 'mbdf_save_v3';
+export const SAVE_VERSION = 4;
+const CHARACTER_IDS: CharacterId[] = ['intern', 'coder', 'designer', 'pm', 'sales', 'cleaner'];
+
+export function defaultSettings(): GameSettings {
+  return { musicVolume: 0.8, sfxVolume: 0.9, vibration: true, lowFx: false, colorblind: false };
+}
+
+function safeVol(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback;
+}
+
+function parseSettings(raw: unknown): GameSettings {
+  const d = defaultSettings();
+  if (!raw || typeof raw !== 'object') return d;
+  const r = raw as Partial<GameSettings>;
+  return {
+    musicVolume: safeVol(r.musicVolume, d.musicVolume),
+    sfxVolume: safeVol(r.sfxVolume, d.sfxVolume),
+    vibration: typeof r.vibration === 'boolean' ? r.vibration : d.vibration,
+    lowFx: Boolean(r.lowFx),
+    colorblind: Boolean(r.colorblind)
+  };
+}
 const LEGACY_V2_KEY = 'mbdf_save_v2';
 const LEGACY_V1_KEY = 'mbdf_save_v1';
 const TALENT_IDS: TalentId[] = ['espresso', 'thick_skin', 'abacus', 'bonus'];
@@ -18,7 +43,7 @@ function genWorkerCode(): string {
 
 function defaultSave(): SaveData {
   return {
-    version: 3,
+    version: SAVE_VERSION,
     coffeeBeans: 0,
     bestSquad: 0,
     totalClears: 0,
@@ -29,7 +54,11 @@ function defaultSave(): SaveData {
     workerCode: genWorkerCode(),
     talents: { espresso: 0, thick_skin: 0, abacus: 0, bonus: 0 },
     muted: false,
-    tutorialDone: false
+    tutorialDone: false,
+    xp: 0,
+    selectedCharacter: 'intern',
+    bestKills: 0,
+    settings: defaultSettings()
   };
 }
 
@@ -39,7 +68,7 @@ function safeInt(v: unknown, min: number, max: number): number {
     : min;
 }
 
-function parseSave(raw: string, fromV1: boolean): SaveData | null {
+export function parseSave(raw: string, fromV1: boolean): SaveData | null {
   try {
     const parsed = JSON.parse(raw) as Partial<SaveData>;
     const talents = defaultSave().talents;
@@ -55,13 +84,20 @@ function parseSave(raw: string, fromV1: boolean): SaveData | null {
         ? parsed.workerCode
         : genWorkerCode();
 
+    const highestCleared = fromV1 ? (totalClears > 0 ? 1 : 0) : safeInt(parsed.highestCleared, 0, 5);
+    const endlessBestWave = safeInt(parsed.endlessBestWave, 0, 999);
+    const oldVersion = safeInt(parsed.version, 0, 99);
+    // v3 及更早的存档没有经验：按历史进度一次性折算，老玩家直接解锁几个角色
+    const xp = oldVersion >= 4 ? safeInt(parsed.xp, 0, 1e9) : backfillXp(highestCleared, totalClears, endlessBestWave);
+    const selected = CHARACTER_IDS.indexOf(parsed.selectedCharacter as CharacterId) >= 0 ? (parsed.selectedCharacter as CharacterId) : 'intern';
+
     return {
-      version: 3,
+      version: SAVE_VERSION,
       coffeeBeans: safeInt(parsed.coffeeBeans, 0, 1e9),
       bestSquad: safeInt(parsed.bestSquad, 0, 1e9),
       totalClears,
-      highestCleared: fromV1 ? (totalClears > 0 ? 1 : 0) : safeInt(parsed.highestCleared, 0, 5),
-      endlessBestWave: safeInt(parsed.endlessBestWave, 0, 999),
+      highestCleared,
+      endlessBestWave,
       endlessBestScore: safeInt(parsed.endlessBestScore, 0, 1e9),
       unlockedBadges: badges,
       workerCode,
@@ -72,7 +108,11 @@ function parseSave(raw: string, fromV1: boolean): SaveData | null {
         Boolean(parsed.tutorialDone) ||
         totalClears > 0 ||
         safeInt(parsed.coffeeBeans, 0, 1e9) > 0 ||
-        TALENT_IDS.some((id) => talents[id] > 0)
+        TALENT_IDS.some((id) => talents[id] > 0),
+      xp,
+      selectedCharacter: selected,
+      bestKills: safeInt(parsed.bestKills, 0, 1e9),
+      settings: parseSettings(parsed.settings)
     };
   } catch {
     return null;

@@ -1,4 +1,5 @@
 import { evaluateNewBadges } from '../data/badges';
+import { applyRunXp, computeRunXp } from '../data/ranks';
 import { BOSSES } from '../data/enemies';
 import { getLevel, LEVELS } from '../data/levels';
 import { PALETTE } from '../data/palette';
@@ -10,6 +11,8 @@ import { ObjectPool } from '../engine/ObjectPool';
 import { clamp, DESIGN_W, PLAYER_Y, projectX } from '../engine/Viewport';
 import { SaveManager } from '../storage/SaveManager';
 import { TutorialSystem } from './TutorialSystem';
+import { HordeDirector } from './HordeDirector';
+import { ImpactFx } from './ImpactFx';
 import { BossSystem } from './BossSystem';
 import { CombatSystem, type CombatContext } from './CombatSystem';
 import { ENDLESS_WAVE_DURATION_SEC, EndlessDirector } from './EndlessDirector';
@@ -29,6 +32,8 @@ import type {
 } from './types';
 
 const MAX_ACTIVE_PARTICLES = 200;
+/** 省电画质下的粒子上限 */
+const MAX_ACTIVE_PARTICLES_LOW = 70;
 
 export interface WorldUICallbacks {
   onPhaseChange: (phase: GamePhase, state: GameState, save: SaveData) => void;
@@ -40,6 +45,10 @@ export class GameWorld {
   public readonly squad = new SquadSystem();
   /** 首局新手引导 */
   public readonly tutorial = new TutorialSystem();
+  /** 打击 / 击杀反馈 */
+  public readonly fx: ImpactFx = new ImpactFx(this);
+  /** 尸潮导演：随时间越刷越多的炮灰 */
+  private readonly horde = new HordeDirector();
   public readonly gates: GateSystem;
   public readonly enemies: EnemySystem;
   public readonly bosses: BossSystem;
@@ -69,6 +78,7 @@ export class GameWorld {
   ) {
     this.save = SaveManager.load();
     this.audio.setMuted(this.save.muted);
+    this.audio.applySettings(this.save.settings);
 
     this.talentFx = computeTalentEffects(this.save.talents);
     this.selectedDay = Math.min(LEVELS.length, this.save.highestCleared + 1);
@@ -158,6 +168,7 @@ export class GameWorld {
       pendingUpgrades: [],
       upgradeSource: 'ENDLESS_BOSS',
       newlyUnlockedBadges: [],
+      xpResult: null,
       boss: this.bosses.boss,
       bossBannerTimer: 0,
       hitstopTimer: 0,
@@ -179,7 +190,8 @@ export class GameWorld {
         gatesFlipped: 0,
         beansEarned: 0,
         maxCritDamage: 0,
-        bossTimeSec: 0
+        bossTimeSec: 0,
+        damage: { weapon: 0, affix: 0, synergy: 0, ult: 0 }
       }
     };
   }
@@ -187,6 +199,23 @@ export class GameWorld {
   selectDay(day: number): void {
     const maxDay = Math.min(LEVELS.length, this.save.highestCleared + 1);
     this.selectedDay = clamp(Math.floor(day), 1, maxDay);
+  }
+
+  /** 省电画质（少粒子、无墨渍、低分辨率） */
+  get lowFx(): boolean {
+    return this.save.settings.lowFx;
+  }
+
+  /** 设置变更后调用：同步音量 / 震动，并写入存档 */
+  applySettings(persist = false): void {
+    this.audio.applySettings(this.save.settings);
+    if (persist) void SaveManager.save(this.save);
+  }
+
+  /** 设置页「重看新手引导」：直接开一局周一教学局 */
+  replayTutorial(): void {
+    this.save.tutorialDone = false;
+    this.startNewRun(1, { tutorial: true });
   }
 
   refreshTalents(): void {
@@ -200,6 +229,7 @@ export class GameWorld {
     this.save = res.data;
     this.refreshTalents();
     this.audio.setMuted(this.save.muted);
+    this.applySettings();
     this.selectedDay = Math.min(LEVELS.length, this.save.highestCleared + 1);
     if (this.state.phase === 'MENU') {
       this.uiCallbacks.onPhaseChange('MENU', this.state, this.save);
@@ -207,6 +237,8 @@ export class GameWorld {
   }
 
   private resetWorldSubsystems(): void {
+    this.fx.reset();
+    this.horde.reset();
     this.gates.reset();
     this.enemies.reset();
     this.bosses.reset();
@@ -360,12 +392,22 @@ export class GameWorld {
     this.spawnFxBurst(DESIGN_W * 0.5, PLAYER_Y - 120, PALETTE.mint, 22);
 
     const ctx = this.buildCombatContext();
+    // 结算复盘：大招清掉的血量 + 对 Boss 的伤害都算在「大招」名下
+    let ultDmg = 0;
+    const list = this.enemies.enemies.activeItems;
+    for (let i = 0; i < list.length; i++) if (list[i].active) ultDmg += Math.max(0, list[i].hp);
+    const boss = this.bosses.boss;
+    const bossHpBefore = boss.active ? boss.hp : 0;
     this.enemies.clearAll(ctx);
     this.bosses.ultBlast(ctx);
+    if (boss.active) ultDmg += Math.max(0, bossHpBefore - boss.hp);
+    this.state.stats.damage.ult += ultDmg;
   }
 
   step(dt: number): void {
     if (this.state.phase !== 'PLAYING') return;
+    // Boss 死亡演出：整体慢动作
+    if (this.bosses.boss.active && this.bosses.boss.dying > 0) dt *= 0.45;
 
     this.quips.step(dt);
     this.tutorial.update(dt, this);
@@ -427,6 +469,7 @@ export class GameWorld {
     this.combat.step(dt, this.enemies, this.bosses, this.gates, ctx);
     this.enemies.step(dt, ctx);
     this.bosses.step(dt, ctx);
+    this.horde.step(dt, this);
 
     this.squad.rebuildRenderUnits(this.state.squadCount);
   }
@@ -479,6 +522,8 @@ export class GameWorld {
     if (this.state.shakeTimer > 0) {
       this.state.shakeTimer = Math.max(0, this.state.shakeTimer - dt);
     }
+
+    this.fx.step(dt);
 
     const pItems = this.particles.activeItems;
     for (let i = 0; i < pItems.length; i++) {
@@ -635,8 +680,21 @@ export class GameWorld {
       onGateFlipped: () => {
         this.state.stats.gatesFlipped += 1;
       },
+      flashScreen: (sec) => {
+        this.fx.flash = Math.max(this.fx.flash, sec);
+      },
+      spawnBlast: (x, y, r, color) => {
+        this.fx.addBlast(x, y, r, color);
+      },
+      spawnScorch: (x, y, size) => {
+        this.fx.addScorch(x, y, size);
+      },
+      onEnemyDied: (e, byPlayer) => {
+        this.fx.onEnemyDied(e, byPlayer);
+      },
       onEnemyKilled: (beans, ult) => {
         this.state.stats.kills += 1;
+        this.fx.onKillCount(this.state.stats.kills);
         this.state.stats.beansEarned += beans;
         if (this.state.isEndless) this.state.endlessScore += 10 * this.state.endlessWave;
         this.state.ultCharge = clamp(this.state.ultCharge + ult, 0, 100);
@@ -680,6 +738,9 @@ export class GameWorld {
         }
         this.finishRun(true);
       },
+      recordDamage: (src, amount) => {
+        this.state.stats.damage[src] += amount;
+      },
       onCritDamage: (dmg) => {
         if (dmg > this.state.stats.maxCritDamage) {
           this.state.stats.maxCritDamage = dmg;
@@ -689,6 +750,14 @@ export class GameWorld {
         this.state.muzzleFlashTimer = 0.07;
       }
     };
+  }
+
+  /** 尸潮高峰来袭：警报条 + 警报音 + 震动 */
+  announceSurge(): void {
+    this.fx.surgeBanner = 1.7;
+    this.audio.playGateBad();
+    this.audio.vibrate([20, 40, 20]);
+    this.triggerShake(4, 0.2);
   }
 
   /** 首局结束（或中途退出）即视为完成新手引导 */
@@ -706,6 +775,7 @@ export class GameWorld {
       this.save.tutorialDone = true;
     }
     this.state.phase = victory ? 'VICTORY' : 'DEFEAT';
+    const firstClear = victory && !this.state.isEndless && this.level.day > this.save.highestCleared;
 
     if (victory) {
       this.audio.playVictory();
@@ -734,6 +804,8 @@ export class GameWorld {
     if (this.state.stats.maxSquad > this.save.bestSquad) {
       this.save.bestSquad = this.state.stats.maxSquad;
     }
+    if (this.state.stats.kills > this.save.bestKills) this.save.bestKills = this.state.stats.kills;
+    this.state.xpResult = applyRunXp(this.save, computeRunXp(this.state, victory, firstClear));
     this.state.newlyUnlockedBadges = evaluateNewBadges(this.state, this.save, victory);
     void SaveManager.save(this.save);
     this.uiCallbacks.onPhaseChange(this.state.phase, this.state, this.save);
@@ -757,7 +829,7 @@ export class GameWorld {
 
   private spawnFxBurst(x: number, y: number, color: string, count: number): void {
     for (let i = 0; i < count; i++) {
-      if (this.particles.activeCount >= MAX_ACTIVE_PARTICLES) break;
+      if (this.particles.activeCount >= (this.lowFx ? MAX_ACTIVE_PARTICLES_LOW : MAX_ACTIVE_PARTICLES)) break;
       const p = this.particles.acquire();
       const ang = Math.random() * Math.PI * 2;
       const spd = 65 + Math.random() * 170;

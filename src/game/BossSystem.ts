@@ -10,6 +10,8 @@ const BOSS_HOME_Y = 240;
 const SHIELD_SEC = 1.6;
 /** Boss 弹幕只判定小队“核心”区域，保证大部队也能靠走位躲开 */
 const CORE_HALF_W = 22;
+/** 死亡演出时长（游戏内时间；演出期间整体慢动作，实际约 1.3 秒） */
+const DEATH_SEC = 0.6;
 
 export class BossSystem {
   public readonly boss: BossRuntime;
@@ -18,6 +20,7 @@ export class BossSystem {
   private minionHpScale = 1;
   private lastGap = 0;
   private slamFired = false;
+  private deathBlastTimer = 0;
 
   constructor(
     private readonly audio: AudioEngine,
@@ -34,7 +37,11 @@ export class BossSystem {
         damage: 2,
         pctDamage: 0.05,
         color: PALETTE.red,
-        label: ''
+        label: '',
+        kind: 'bellwave',
+        variant: 0,
+        rot: 0,
+        age: 0
       }),
       (p) => {
         p.vx = 0;
@@ -91,7 +98,10 @@ export class BossSystem {
       shieldsUsed: 0,
       slamTimer: 0,
       ringPhase: 0,
-      age: 0
+      age: 0,
+      fireFlash: 0,
+      dying: 0,
+      landed: false
     };
   }
 
@@ -126,7 +136,7 @@ export class BossSystem {
   damage(dmg: number, worldX: number, worldY: number, ctx: EnemyStepContext): boolean {
     const b = this.boss;
     if (!b.active || b.y < TRACK_TOP_Y + 20) return false;
-    if (b.shieldTimer > 0) return false;
+    if (b.shieldTimer > 0 || b.dying > 0) return false;
 
     const cfg = BOSSES[b.id];
     b.hp -= dmg;
@@ -155,16 +165,16 @@ export class BossSystem {
     }
 
     if (b.hp <= 0) {
+      // 死亡演出：慢动作里连环爆炸，最后白屏巨响再结算（见 stepBoss）
       b.hp = 0;
-      b.active = false;
+      b.dying = DEATH_SEC;
+      this.deathBlastTimer = 0;
       this.clearProjectiles(ctx);
       this.audio.playExplosion(true);
-      ctx.triggerHitstop(0.06);
-      ctx.triggerShake(10, 0.35);
-      ctx.spawnFxBurst(worldX, worldY, PALETTE.yellow, 30);
-      ctx.spawnFxBurst(worldX, worldY, PALETTE.mint, 20);
-      ctx.spawnFxBurst(worldX, worldY, PALETTE.red, 14);
-      ctx.onBossKilled(cfg.beansReward);
+      ctx.triggerHitstop(0.08);
+      ctx.triggerShake(9, 0.4);
+      ctx.flashScreen?.(0.1);
+      ctx.spawnBlast?.(worldX, worldY, 60, PALETTE.yellow);
     }
     return true;
   }
@@ -203,6 +213,12 @@ export class BossSystem {
 
     if (b.flashTimer > 0) b.flashTimer = Math.max(0, b.flashTimer - dt);
     if (b.shieldTimer > 0) b.shieldTimer = Math.max(0, b.shieldTimer - dt);
+    if (b.fireFlash > 0) b.fireFlash = Math.max(0, b.fireFlash - dt);
+
+    if (b.dying > 0) {
+      this.stepDeath(dt, ctx);
+      return;
+    }
 
     if (b.slamTimer > 0) {
       b.slamTimer -= dt;
@@ -222,6 +238,16 @@ export class BossSystem {
     if (Math.abs(dy) > 1) {
       const vy = b.slamTimer > 0 ? 420 : 130;
       b.y += clamp(dy, -vy * dt, vy * dt);
+    }
+
+    // 登场落地：震屏 + 扬尘冲击波
+    if (!b.landed && b.y >= b.homeY - 4) {
+      b.landed = true;
+      const bx = projectX(b.laneX, b.y);
+      ctx.triggerShake(9, 0.3);
+      ctx.spawnBlast?.(bx, b.y + b.radius * 0.8, 70, PALETTE.paper);
+      ctx.spawnFxBurst(bx, b.y + b.radius * 0.8, PALETTE.coffee, 16);
+      this.audio.playExplosion(true);
     }
 
     // 横向巡游
@@ -250,9 +276,61 @@ export class BossSystem {
     }
   }
 
+  /** 下一招（渲染层用来画蓄力前摇和弹道预告） */
+  peekNextMove(): BossMove | null {
+    const b = this.boss;
+    if (!b.active) return null;
+    const cfg = BOSSES[b.id];
+    const moves = b.enraged ? cfg.enragedMoves : cfg.moves;
+    return moves[b.moveIdx % moves.length];
+  }
+
+  /** 死亡演出：Boss 原地抖动闪白，四处连环爆炸，结束时白屏巨响并结算 */
+  private stepDeath(dt: number, ctx: EnemyStepContext): void {
+    const b = this.boss;
+    b.dying -= dt;
+    b.flashTimer = 0.05;
+    this.deathBlastTimer -= dt;
+    const bx = projectX(b.laneX, b.y);
+    if (this.deathBlastTimer <= 0) {
+      this.deathBlastTimer = 0.09;
+      const ox = (Math.random() - 0.5) * b.radius * 2.2;
+      const oy = (Math.random() - 0.5) * b.radius * 1.8;
+      const color = [PALETTE.yellow, PALETTE.red, PALETTE.paper][Math.floor(Math.random() * 3)];
+      ctx.spawnBlast?.(bx + ox, b.y + oy, 26 + Math.random() * 22, color);
+      ctx.spawnFxBurst(bx + ox, b.y + oy, color, 8);
+      ctx.triggerShake(5, 0.1);
+      this.audio.playExplosion(false);
+    }
+    if (b.dying <= 0) {
+      b.dying = 0;
+      b.active = false;
+      this.audio.playExplosion(true);
+      ctx.triggerShake(13, 0.45);
+      ctx.flashScreen?.(0.22);
+      ctx.spawnBlast?.(bx, b.y, 130, PALETTE.yellow);
+      ctx.spawnFxBurst(bx, b.y, PALETTE.yellow, 34);
+      ctx.spawnFxBurst(bx, b.y, PALETTE.mint, 24);
+      ctx.spawnFxBurst(bx, b.y, PALETTE.red, 18);
+      ctx.onBossKilled(BOSSES[b.id].beansReward);
+    }
+  }
+
   private performMove(move: BossMove, ctx: EnemyStepContext): void {
     const b = this.boss;
     b.waveCount++;
+    b.fireFlash = 0.22;
+    this.audio.playBossShot(
+      move === 'ring_gap' || move === 'slam'
+        ? 'ring'
+        : move.startsWith('fan') || move === 'cross'
+          ? 'fan'
+          : move.startsWith('laser')
+            ? 'charge'
+            : move.startsWith('bomb')
+              ? 'whistle'
+              : 'thud'
+    );
     switch (move) {
       case 'ring_gap':
         this.fireRingGap(1);
@@ -314,6 +392,36 @@ export class BossSystem {
     }
   }
 
+  /** 按 Boss 主题给弹幕换造型：铃声波 / PPT 幻灯片 / 便利贴 / 火球 / KPI 金币 */
+  private styleShot(p: BossProjectile, seed: number): void {
+    const style = this.boss.style;
+    p.label = '';
+    p.age = 0;
+    p.rot = Math.random() * Math.PI * 2;
+    p.variant = Math.abs(Math.round(seed)) % 3;
+    switch (style) {
+      case 'alarm':
+        p.kind = 'bellwave';
+        p.color = PALETTE.yellow;
+        break;
+      case 'projector':
+        p.kind = 'slide';
+        p.color = '#7FF7FF';
+        break;
+      case 'hydra':
+        p.kind = 'note';
+        p.color = ['#FFE600', '#FF8FB8', '#00F5D4'][p.variant];
+        break;
+      case 'server':
+        p.kind = 'fireball';
+        p.color = '#FF8A3D';
+        break;
+      default:
+        p.kind = 'coin';
+        p.color = '#FFC93C';
+    }
+  }
+
   private acquireProjectile(): BossProjectile | null {
     if (this.projectiles.activeCount >= 85) return null;
     return this.projectiles.acquire();
@@ -338,8 +446,7 @@ export class BossSystem {
       p.radius = 11;
       p.damage = 2;
       p.pctDamage = 0.05;
-      p.color = PALETTE.red;
-      p.label = '';
+      this.styleShot(p, x);
     }
   }
 
@@ -358,8 +465,7 @@ export class BossSystem {
       p.radius = 9;
       p.damage = 2;
       p.pctDamage = 0.035;
-      p.color = PALETTE.purple;
-      p.label = '';
+      this.styleShot(p, i);
     }
   }
 
@@ -378,8 +484,7 @@ export class BossSystem {
         p.radius = 10;
         p.damage = 2;
         p.pctDamage = 0.04;
-        p.color = PALETTE.coffee;
-        p.label = '';
+        this.styleShot(p, k);
       }
     }
   }
@@ -435,6 +540,8 @@ export class BossSystem {
 
       p.laneX += p.vx * dt;
       p.y += p.vy * dt;
+      p.age += dt;
+      p.rot += dt * (p.kind === 'note' ? 5 : p.kind === 'coin' ? 9 : p.kind === 'slide' ? 2.5 : 0);
 
       if (
         Math.abs(p.y - PLAYER_Y) <= p.radius + 14 &&
@@ -465,10 +572,18 @@ export class BossSystem {
       if (h.warnTimer > 0) {
         h.warnTimer -= dt;
         if (h.warnTimer <= 0) {
-          this.audio.playExplosion(h.kind === 'bomb');
+          const hx = projectX(h.laneX, h.y);
           if (h.kind === 'bomb') {
-            ctx.triggerShake(4, 0.12);
-            ctx.spawnFxBurst(projectX(h.laneX, h.y), h.y, PALETTE.red, 14);
+            this.audio.playExplosion(true);
+            ctx.triggerShake(7, 0.18);
+            ctx.spawnBlast?.(hx, h.y, h.halfWidth * 1.9, PALETTE.red);
+            ctx.spawnFxBurst(hx, h.y, PALETTE.yellow, 16);
+            ctx.spawnFxBurst(hx, h.y, PALETTE.red, 12);
+            ctx.spawnScorch?.(hx, h.y + 4, h.halfWidth * 1.4);
+          } else {
+            this.audio.playBossShot('zap');
+            ctx.triggerShake(4, 0.16);
+            ctx.spawnFxBurst(hx, h.y, PALETTE.paper, 10);
           }
         }
         continue;
