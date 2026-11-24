@@ -115,7 +115,7 @@ export class EnemySystem {
     e.hp = Math.round(cfg.hp * hpScale);
     e.maxHp = e.hp;
     // 每只怪速度略有差异，避免整排“机器人齐步走”
-    e.walkSpeed = cfg.walkSpeed * (0.9 + Math.random() * 0.2);
+    e.walkSpeed = cfg.walkSpeed * (0.9 + Math.random() * 0.2) * this.speedMult;
     e.homing = cfg.homing;
     e.radius = cfg.radius;
     e.damageToSquad = cfg.damageToSquad;
@@ -126,6 +126,12 @@ export class EnemySystem {
     return e;
   }
 
+  /** 加班强度：小怪血量 / 前进速度倍率（每局开局设置） */
+  public hpMult = 1;
+  public speedMult = 1;
+  /** 本局遇到过的敌人（打工图鉴用） */
+  public readonly seen = new Set<EnemyId>();
+
   spawnSwarm(
     enemyId: EnemyId,
     count: number,
@@ -133,6 +139,8 @@ export class EnemySystem {
     hpScale: number,
     laneCenter?: number
   ): void {
+    hpScale *= this.hpMult;
+    this.seen.add(enemyId);
     const top = TRACK_TOP_Y - 24;
     const jitter = (amp: number) => (Math.random() * 2 - 1) * amp;
 

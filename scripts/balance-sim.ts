@@ -210,6 +210,10 @@ function runOnce(day: number, kind: BotKind, talentLv: number): RunResult {
   world.save.xp = 1e6;
   world.save.bestKills = 1e6;
   world.save.selectedCharacter = (process.env.CHAR || 'intern') as CharacterId;
+  // 加班强度（OT=0~5）：直接视为已解锁
+  const ot = Number(process.env.OT || 0);
+  world.save.overtime[world.save.selectedCharacter] = Math.max(0, ot - 1);
+  world.selectedOvertime = ot;
   world.startNewRun(day);
   const bot = new Bot(kind, world);
   let ults = 0;

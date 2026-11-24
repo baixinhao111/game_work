@@ -111,6 +111,11 @@ export class BossSystem {
     Object.assign(this.boss, this.createEmpty());
   }
 
+  /** 加班强度 4：Boss 血量 / 出招间隔 / 提前红温 */
+  public hpMult = 1;
+  public rateMult = 1;
+  public enrageBonus = 0;
+
   spawn(bossId: BossId, minionHpScale: number, ctx: EnemyStepContext): void {
     const cfg = BOSSES[bossId];
     Object.assign(this.boss, this.createEmpty());
@@ -122,8 +127,8 @@ export class BossSystem {
     this.boss.subtitle = cfg.subtitle;
     this.boss.laneX = 0;
     this.boss.y = TRACK_TOP_Y - 60;
-    this.boss.hp = cfg.hp;
-    this.boss.maxHp = cfg.hp;
+    this.boss.hp = cfg.hp * this.hpMult;
+    this.boss.maxHp = this.boss.hp;
     this.boss.radius = cfg.radius;
     this.boss.attackTimer = 2.2;
     this.slamFired = false;
@@ -157,7 +162,7 @@ export class BossSystem {
       ctx.triggerQuip('BOSS_SHIELD');
     }
 
-    if (!b.enraged && b.hp <= b.maxHp * cfg.enrageAt) {
+    if (!b.enraged && b.hp <= b.maxHp * (cfg.enrageAt + this.enrageBonus)) {
       b.enraged = true;
       ctx.triggerShake(7, 0.3);
       ctx.spawnFloatingText(worldX, worldY - 40, '红温狂暴!!', PALETTE.red, 18);
@@ -271,7 +276,7 @@ export class BossSystem {
       const moves = b.enraged ? cfg.enragedMoves : cfg.moves;
       const move = moves[b.moveIdx % moves.length];
       b.moveIdx++;
-      b.attackTimer = b.enraged ? cfg.enragedInterval : cfg.attackInterval;
+      b.attackTimer = (b.enraged ? cfg.enragedInterval : cfg.attackInterval) * this.rateMult;
       this.performMove(move, ctx);
     }
   }

@@ -1,6 +1,8 @@
 import { BADGES } from '../data/badges';
 import { CHARACTERS, getCharacter, isCharacterUnlocked, nextRankUnlock, CLEANER_KILLS } from '../data/characters';
 import { RANKS, rankProgress, rankForXp } from '../data/ranks';
+import { CODEX, CODEX_TABS, codexProgress, isDiscovered, type CodexTab } from '../data/codex';
+import { MEDAL_NAME, maxOvertime, medalOf, OVERTIME_LEVELS, overtimeOf } from '../data/overtime';
 import { AFFIXES, weaponDisplayName } from '../data/weapons';
 import { BOSSES } from '../data/enemies';
 import { LEVELS } from '../data/levels';
@@ -54,6 +56,8 @@ export interface UIActions {
   onReplayTutorial: () => void;
   /** 在同事名册里选出战角色 */
   onSelectCharacter: (id: CharacterId) => void;
+  onSelectOvertime: (level: number) => void;
+  getSelectedOvertime: () => number;
   getSave: () => SaveData;
   getSelectedDay: () => number;
 }
@@ -114,6 +118,7 @@ export class UIController {
   private readonly dockPickupBar = document.getElementById('dock-pickup-bar')!;
   private readonly dockPickupTitle = document.getElementById('dock-pickup-title')!;
   private readonly dockPickupSub = document.getElementById('dock-pickup-sub')!;
+  private codexTab: CodexTab = 'char';
   /** 本局角色的大招名（开局时由 syncPhase 设置） */
   private ultName = '准点下班';
   /** 当前显示中的工作群消息（QuipSystem 到期时传 null） */
@@ -264,6 +269,28 @@ export class UIController {
     bindToggle('set-lowfx', 'lowFx');
     bindToggle('set-colorblind', 'colorblind');
 
+    // 加班强度
+    document.getElementById('ot-chips')!.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest('button[data-ot]') as HTMLButtonElement | null;
+      if (!btn || btn.disabled) return;
+      this.actions.onSelectOvertime(Number(btn.dataset.ot));
+      this.renderMenu(this.actions.getSave());
+    });
+
+    // 打工图鉴
+    const codexOverlay = document.getElementById('codex-overlay')!;
+    document.getElementById('btn-codex')!.addEventListener('click', () => {
+      this.renderCodex(this.actions.getSave());
+      codexOverlay.classList.remove('hidden');
+    });
+    document.getElementById('btn-codex-close')!.addEventListener('click', () => codexOverlay.classList.add('hidden'));
+    document.getElementById('codex-tabs')!.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest('button[data-tab]') as HTMLButtonElement | null;
+      if (!btn) return;
+      this.codexTab = btn.dataset.tab as CodexTab;
+      this.renderCodex(this.actions.getSave());
+    });
+
     // 同事名册
     const openRoster = () => {
       this.renderRoster(this.actions.getSave());
@@ -385,7 +412,7 @@ export class UIController {
         this.hudDayBadge.textContent = `无尽加班 · 第 ${state.endlessWave} 波`;
       } else {
         const lv = LEVELS[state.levelDay - 1];
-        this.hudDayBadge.textContent = `${lv.weekday} · ${lv.title}`;
+        this.hudDayBadge.textContent = `${lv.weekday} · ${lv.title}${state.overtime > 0 ? ` · 加班${state.overtime}` : ''}`;
       }
     }
   }
@@ -438,7 +465,11 @@ export class UIController {
       (document.querySelector('.hero-me') as HTMLImageElement).src = `./assets/sprites/${heroFile(ch.id)}`;
     }
     document.getElementById('char-slot-avatar')!.style.background = ch.color;
-    document.getElementById('char-slot-name')!.textContent = ch.name;
+    const medal = medalOf(overtimeOf(save, ch.id));
+    document.getElementById('char-slot-name')!.innerHTML = `${ch.name}${medal !== 'none' ? `<span class="medal ${medal}">${MEDAL_NAME[medal]}</span>` : ''}`;
+    this.renderOvertime(save, ch.id);
+    const cp = codexProgress(save);
+    document.getElementById('codex-count-hint')!.textContent = `${cp.have}/${cp.total}`;
     document.getElementById('char-slot-sub')!.textContent = `${ch.weaponName} · 大招「${ch.ultName}」`;
     const next = nextRankUnlock(save);
     document.getElementById('char-slot-next')!.textContent = next
@@ -469,6 +500,50 @@ export class UIController {
       (id) => save.talents[id] < TALENTS[id].maxLevel && save.coffeeBeans >= talentCost(save.talents[id])
     ).length;
     this.talentEntryHint.textContent = affordable > 0 ? `${affordable}` : '';
+  }
+
+  /** 加班强度选择：0 ~ 该角色可选的最高级；升到主管才出现 */
+  private renderOvertime(save: SaveData, id: CharacterId): void {
+    const row = document.getElementById('ot-row')!;
+    const rule = document.getElementById('ot-rule')!;
+    const max = maxOvertime(save, id);
+    const show = max > 0;
+    row.classList.toggle('hidden', !show);
+    if (!show) {
+      rule.classList.add('hidden');
+      return;
+    }
+    const sel = Math.min(this.actions.getSelectedOvertime(), max);
+    const cleared = overtimeOf(save, id);
+    document.getElementById('ot-chips')!.innerHTML = OVERTIME_LEVELS.map((o) => {
+      const locked = o.level > max;
+      const cls = ['ot-chip', o.level === sel ? 'active' : '', o.level > 0 && o.level <= cleared ? 'cleared' : ''].filter(Boolean).join(' ');
+      return `<button type="button" class="${cls}" data-ot="${o.level}" ${locked ? 'disabled' : ''}>${locked ? iconSvg('lock') : o.level}</button>`;
+    }).join('');
+    const cur = OVERTIME_LEVELS[sel];
+    rule.classList.toggle('hidden', sel === 0);
+    rule.textContent = sel > 0 ? `${cur.name}：${OVERTIME_LEVELS.slice(1, sel + 1).map((o) => o.rule.replace(/^\+ /, '')).join('；')} · 绩效与咖啡豆 ×${cur.reward}` : '';
+  }
+
+  private renderCodex(save: SaveData): void {
+    const cp = codexProgress(save);
+    document.getElementById('codex-desc')!.textContent = `已点亮 ${cp.have}/${cp.total}。第一次遇到或拿到就会点亮，每条 +5 绩效。`;
+    document.getElementById('codex-tabs')!.innerHTML = CODEX_TABS.map((t) => {
+      const all = CODEX.filter((e) => e.tab === t.id);
+      const have = all.filter((e) => isDiscovered(e, save)).length;
+      return `<button type="button" class="codex-tab ${t.id === this.codexTab ? 'active' : ''}" data-tab="${t.id}">${t.name}<small>${have}/${all.length}</small></button>`;
+    }).join('');
+    document.getElementById('codex-grid')!.innerHTML = CODEX.filter((e) => e.tab === this.codexTab)
+      .map((e) => {
+        const open = isDiscovered(e, save);
+        const thumb = e.img ? `<img src="./assets/sprites/${e.img}" alt="" />` : iconSvg(open ? e.icon : 'lock');
+        return `<div class="codex-item ${open ? '' : 'locked'}">
+          <span class="codex-thumb">${thumb}</span>
+          <b>${open ? e.name : '????'}</b>
+          <small>${open ? e.desc : e.hint ?? '还没遇到'}</small>
+        </div>`;
+      })
+      .join('');
   }
 
   private openSettings(): void {
@@ -514,7 +589,7 @@ export class UIController {
         : '';
       return `<button type="button" class="roster-item ${current ? 'current' : ''} ${open ? '' : 'locked'}" data-char="${c.id}" ${open ? '' : 'disabled'}>
         <span class="char-slot-avatar" style="background:${open ? c.color : ''}">${avatar}</span>
-        <b>${hidden ? '？？？' : c.name}</b>
+        <b>${hidden ? '？？？' : c.name}${open && medalOf(overtimeOf(save, c.id)) !== 'none' ? `<span class="medal ${medalOf(overtimeOf(save, c.id))}">${MEDAL_NAME[medalOf(overtimeOf(save, c.id))]}</span>` : ''}</b>
         <small>${hidden ? c.unlockHint : `${c.role} · ${c.weaponName}`}</small>
         ${detail}
         <span class="roster-state">${state}</span>
@@ -698,13 +773,21 @@ export class UIController {
     // 有「下一天」时它是主按钮，「再来一局」降为次要
     document.getElementById('btn-retry')!.className = hasNext ? 'secondary-btn' : 'cta-btn';
 
+    const notes: string[] = [];
     if (state.newlyUnlockedBadges.length > 0) {
       const names = state.newlyUnlockedBadges
         .map((id) => BADGES.find((b) => b.id === id))
         .filter(Boolean)
         .map((b) => `{i:${b!.icon}}${b!.name}`)
         .join('、');
-      this.resultNewBadges.innerHTML = richHtml(`{i:sparkle} 解锁新工牌：${names}`);
+      notes.push(`{i:sparkle} 解锁新工牌：${names}`);
+    }
+    if (state.overtimeUnlocked) {
+      const o = OVERTIME_LEVELS[state.overtimeUnlocked];
+      notes.push(`{i:flame} ${getCharacter(state.character).name}解锁加班强度 ${o.level}「${o.name}」`);
+    }
+    if (notes.length > 0) {
+      this.resultNewBadges.innerHTML = notes.map((n) => richHtml(n)).join('<br />');
       this.resultNewBadges.classList.remove('hidden');
     } else {
       this.resultNewBadges.classList.add('hidden');
@@ -770,7 +853,7 @@ export class UIController {
     ];
     this.recapBars.innerHTML =
       total <= 0
-        ? '<div class="recap-bar"><span class="lbl">还没打出伤害</span></div>'
+        ? '<div class="recap-bar"><span class="lbl" style="width:auto">这局还没打出伤害</span></div>'
         : rows
             .filter((r) => dmg[r.id] > 0 || r.id === 'weapon')
             .map((r) => {

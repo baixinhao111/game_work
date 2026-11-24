@@ -115,6 +115,12 @@
               <span class="chapter-progress" id="menu-clears">0/5</span>
             </div>
             <div class="day-picker" id="day-picker" role="tablist" aria-label="选择关卡"></div>
+            <!-- 加班强度（升到主管开放） -->
+            <div class="ot-row hidden" id="ot-row">
+              <span class="ot-label"><i data-ic="flame"></i> 加班强度</span>
+              <div class="ot-chips" id="ot-chips"></div>
+            </div>
+            <div class="ot-rule hidden" id="ot-rule"></div>
             <div class="stage-preview">
               <div class="stage-day" id="stage-day">DAY 01 · 周一</div>
               <div class="stage-name" id="stage-name">早八噩梦（高密度尸潮版）</div>
@@ -143,8 +149,11 @@
             <button type="button" class="dock-btn" id="btn-talents">
               <i data-ic="cup"></i><span>摸鱼天赋</span><small class="dock-dot" id="talent-entry-hint"></small>
             </button>
+            <button type="button" class="dock-btn" id="btn-codex">
+              <i data-ic="flask"></i><span>打工图鉴</span><small id="codex-count-hint">0/0</small>
+            </button>
             <button type="button" class="dock-btn" id="btn-badges">
-              <i data-ic="idcard"></i><span>工牌图鉴</span><small id="badge-count-hint">0/6</small>
+              <i data-ic="idcard"></i><span>荣誉工牌</span><small id="badge-count-hint">0/20</small>
             </button>
           </div>
         </div>
@@ -280,6 +289,20 @@
           <div class="badge-grid" id="badge-grid"></div>
           <div class="modal-actions">
             <button type="button" class="cta-btn" id="btn-badges-close">关闭图鉴</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 打工图鉴 -->
+      <div id="codex-overlay" class="overlay-screen hidden">
+        <div class="modal-card codex-card">
+          <div class="sticky-tag mint">职场百科全书</div>
+          <h2 class="modal-title">打工图鉴</h2>
+          <p class="modal-desc" id="codex-desc">第一次遇到或拿到就会点亮，每点亮一条 +5 绩效。</p>
+          <div class="codex-tabs" id="codex-tabs"></div>
+          <div class="codex-grid" id="codex-grid"></div>
+          <div class="modal-actions">
+            <button type="button" class="cta-btn" id="btn-codex-close">合上图鉴</button>
           </div>
         </div>
       </div>

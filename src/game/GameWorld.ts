@@ -1,6 +1,8 @@
 import { evaluateNewBadges } from '../data/badges';
 import { applyRunXp, computeRunXp } from '../data/ranks';
 import { getCharacter, isCharacterUnlocked, type CharacterConfig } from '../data/characters';
+import { CODEX_XP } from '../data/codex';
+import { maxOvertime, OVERTIME_BOSS_HP, OVERTIME_ENEMY_HP, OVERTIME_LEVELS } from '../data/overtime';
 import { generateUpgrades, type Loadout } from './UpgradeGenerator';
 import { BOSSES } from '../data/enemies';
 import { getLevel, LEVELS } from '../data/levels';
@@ -25,6 +27,7 @@ import { SquadSystem } from './SquadSystem';
 import type { ActiveQuip } from '../data/quips';
 import type {
   AffixId,
+  GateConfig,
   WeaponId,
   FloatingText,
   GamePhase,
@@ -72,6 +75,8 @@ export class GameWorld {
   private contactQuipTimer = 0;
   /** 菜单里选中的关卡（1–5） */
   public selectedDay = 1;
+  /** 菜单里选中的加班强度 */
+  public selectedOvertime = 0;
   public level: LevelConfig = LEVELS[0];
   private activeTimeline: LevelWaveConfig[] = LEVELS[0].timeline;
   private talentFx: TalentEffects;
@@ -178,6 +183,9 @@ export class GameWorld {
       upgradeSource: 'ENDLESS_BOSS',
       newlyUnlockedBadges: [],
       xpResult: null,
+      overtime: 0,
+      newCodex: [],
+      overtimeUnlocked: null,
       boss: this.bosses.boss,
       bossBannerTimer: 0,
       hitstopTimer: 0,
@@ -200,7 +208,9 @@ export class GameWorld {
         beansEarned: 0,
         maxCritDamage: 0,
         bossTimeSec: 0,
-        damage: { weapon: 0, sidearm: 0, affix: 0, synergy: 0, ult: 0 }
+        damage: { weapon: 0, sidearm: 0, affix: 0, synergy: 0, ult: 0 },
+        hitsTaken: 0,
+        maxSidearms: 0
       }
     };
   }
@@ -240,6 +250,7 @@ export class GameWorld {
     this.audio.setMuted(this.save.muted);
     this.applySettings();
     this.selectedDay = Math.min(LEVELS.length, this.save.highestCleared + 1);
+    this.selectedOvertime = this.save.overtimeSel;
     if (this.state.phase === 'MENU') {
       this.uiCallbacks.onPhaseChange('MENU', this.state, this.save);
     }
@@ -266,6 +277,43 @@ export class GameWorld {
     this.sickLeaveTimer = 0;
   }
 
+  /**
+   * 加班强度（规则逐级叠加，docs/07 §3.5）：
+   * 每级怪物 / Boss 血量递增；2 每段多一扇红门 · 3 精英提前、多一波尸潮 · 4 Boss 更快更早红温 · 5 开局人数减半
+   */
+  private applyOvertime(level: number): void {
+    const L = Math.max(0, Math.min(5, level));
+    this.state.overtime = L;
+    this.enemies.hpMult = OVERTIME_ENEMY_HP[L];
+    this.enemies.speedMult = 1 + 0.04 * L;
+    this.bosses.hpMult = OVERTIME_BOSS_HP[L];
+    this.bosses.rateMult = L >= 4 ? 0.85 : 1;
+    this.bosses.enrageBonus = L >= 4 ? 0.12 : 0;
+    if (L >= 3 && !this.state.isEndless) {
+      // 精英波提前 3 秒
+      this.activeTimeline = this.activeTimeline
+        .map((w) =>
+          w.type === 'ENEMY_SWARM' && w.enemySpawn && (w.enemySpawn.enemyId === 'ppt_pie' || w.enemySpawn.enemyId === 'client_tweak')
+            ? { ...w, timeOffsetSec: Math.max(2, w.timeOffsetSec - 3) }
+            : w
+        )
+        .sort((a, b) => a.timeOffsetSec - b.timeOffsetSec);
+    }
+    if (L >= 5) {
+      this.state.squadCount = Math.max(1, Math.ceil(this.state.squadCount / 2));
+      this.state.stats.maxSquad = this.state.squadCount;
+    }
+  }
+
+  /** 打工图鉴：首次发现记一笔，结算时并入存档并奖励绩效 */
+  discover(key: string): void {
+    if (this.save.codex.indexOf(key) >= 0 || this.state.newCodex.indexOf(key) >= 0) return;
+    this.state.newCodex.push(key);
+    if (this.state.phase === 'PLAYING' && !this.tutorial.active) {
+      this.spawnFloatingText(DESIGN_W * 0.5, 210, '图鉴 +1', PALETTE.paper, 13);
+    }
+  }
+
   /** 开局前确定出战角色：没解锁的回退到实习生；新手引导局固定用实习生 */
   private pickCharacter(tutorial = false): void {
     const want = getCharacter(this.save.selectedCharacter);
@@ -285,8 +333,11 @@ export class GameWorld {
     this.refreshTalents();
     this.resetWorldSubsystems();
     this.pickCharacter(opts.tutorial);
+    this.enemies.seen.clear();
 
     this.state = this.createInitialState('PLAYING', false);
+    this.applyOvertime(opts.tutorial ? 0 : Math.min(this.selectedOvertime, maxOvertime(this.save, this.char.id)));
+    this.discover(`w:${this.state.activeWeapon}`);
     if (opts.tutorial) {
       // 教学局：多送 2 层护盾，前 15 秒的怪血量打折（见 stepDirector），先让新玩家爽起来
       this.tutorial.start(this);
@@ -305,8 +356,11 @@ export class GameWorld {
     this.refreshTalents();
     this.resetWorldSubsystems();
     this.pickCharacter();
+    this.enemies.seen.clear();
     this.activeTimeline = EndlessDirector.generateWaveTimeline(1);
     this.state = this.createInitialState('PLAYING', true);
+    this.applyOvertime(0);
+    this.discover(`w:${this.state.activeWeapon}`);
     this.uiCallbacks.onEnsureBoss?.({ bossId: EndlessDirector.getBossForWave(1) });
     this.squad.rebuildRenderUnits(this.state.squadCount);
     this.quips.trigger('CLEAN_START');
@@ -328,6 +382,7 @@ export class GameWorld {
       this.addSidearm(opt.weaponId);
     } else if (opt.kind === 'AFFIX' && opt.affixId) {
       this.state.affixes[opt.affixId] = (this.state.affixes[opt.affixId] || 0) + 1;
+      this.discover(`a:${opt.affixId}`);
       const a = AFFIXES[opt.affixId];
       this.showBanner(`${opt.exclusive ? '{i:star} 专属' : '{i:sparkle}'} ${a.name}`, a.desc, a.color);
     } else if (opt.kind === 'SQUAD_BOOST') {
@@ -378,6 +433,8 @@ export class GameWorld {
       st.sidearms.push({ id: old, level: 1 });
     }
     const w = WEAPONS[weaponId];
+    this.discover(`w:${weaponId}`);
+    if (st.weaponLevel >= 3) this.discover(`v:${weaponId}`);
     this.showBanner(`{i:swap} 换装 · ${weaponDisplayName(weaponId, st.weaponLevel)}`, w.desc, PALETTE.yellow);
   }
 
@@ -388,6 +445,7 @@ export class GameWorld {
     st.weaponLevel += 1;
     const w = WEAPONS[st.activeWeapon];
     if (st.weaponLevel === 3) {
+      this.discover(`v:${st.activeWeapon}`);
       st.hitstopTimer = Math.max(st.hitstopTimer, 0.08);
       this.fx.stamp('进 化 !', PALETTE.yellow);
       this.audio.playMilestone();
@@ -409,6 +467,8 @@ export class GameWorld {
     }
     if (st.sidearms.length >= SIDEARM_MAX) st.sidearms.shift();
     st.sidearms.push({ id: weaponId, level: 1 });
+    st.stats.maxSidearms = Math.max(st.stats.maxSidearms, st.sidearms.length);
+    this.discover(`w:${weaponId}`);
     this.showBanner(`{i:magnet} 外挂 · ${w.shortTag}`, '挂在小队两侧自动开火', w.color);
   }
 
@@ -614,7 +674,7 @@ export class GameWorld {
       this.nextWaveIdx++;
 
       if (wave.type === 'GATE_PAIR' || wave.type === 'BARREL') {
-        if (wave.gates) this.gates.spawnFromConfigs(wave.gates);
+        if (wave.gates) this.gates.spawnFromConfigs(this.state.overtime >= 2 ? this.addRedGate(wave.gates) : wave.gates);
       } else if (wave.type === 'ENEMY_SWARM' && wave.enemySpawn) {
         this.enemies.spawnSwarm(
           wave.enemySpawn.enemyId,
@@ -625,12 +685,25 @@ export class GameWorld {
         );
       } else if (wave.type === 'BOSS' && wave.bossId) {
         this.state.bossBannerTimer = 2.4;
+        this.discover(`b:${wave.bossId}`);
         const hpScale = this.state.isEndless
           ? 1 + (this.state.endlessWave - 1) * 0.32
           : 1 + (this.level.day - 1) * 0.3;
         this.bosses.spawn(wave.bossId, hpScale, ctx);
       }
     }
+  }
+
+  /** 加班强度 2：一半的「两扇都是蓝门」的门段，把较差的那扇换成需要射穿的红门 */
+  private addRedGate(gates: GateConfig[]): GateConfig[] {
+    if (gates.length !== 2 || Math.random() < 0.5) return gates;
+    const blue = (g: GateConfig) => g.initialOp === '+' || g.initialOp === '×';
+    if (!blue(gates[0]) || !blue(gates[1])) return gates;
+    const k = gates[0].initialOp === '+' && (gates[1].initialOp === '×' || gates[0].value <= gates[1].value) ? 0 : 1;
+    const g = gates[k];
+    if (g.initialOp !== '+') return gates;
+    const red: GateConfig = { ...g, kind: 'SUB', initialOp: '-', value: Math.max(4, g.value), shootableToFlip: true, flipHpPerStep: 14 };
+    return k === 0 ? [red, gates[1]] : [gates[0], red];
   }
 
   private syncSynergies(): void {
@@ -641,6 +714,7 @@ export class GameWorld {
     for (const id of nextList) {
       if (!prevSet.has(id)) {
         const cfg = SYNERGIES[id];
+        this.discover(`s:${id}`);
         this.state.hitstopTimer = Math.max(this.state.hitstopTimer, 0.04);
         this.audio.playGateFlip();
         this.showBanner(`{i:flask} 化学反应 · ${cfg.name}`, cfg.desc, PALETTE.purple);
@@ -768,6 +842,7 @@ export class GameWorld {
       },
       grantAffix: (affixId) => {
         this.state.affixes[affixId] = (this.state.affixes[affixId] || 0) + 1;
+        this.discover(`a:${affixId}`);
         const a = AFFIXES[affixId];
         const lv = this.state.affixes[affixId];
         this.showBanner(`{i:sparkle} ${a.name}${lv > 1 ? ` Lv.${lv}` : ''}`, a.desc, a.color);
@@ -800,6 +875,7 @@ export class GameWorld {
 
         const next = Math.max(0, this.state.squadCount - loss);
         this.state.squadCount = next;
+        this.state.stats.hitsTaken += 1;
         this.state.hurtFlashTimer = 0.25;
         this.audio.playGateBad();
         this.triggerShake(4 + Math.min(4, loss * 0.5), 0.16);
@@ -957,13 +1033,37 @@ export class GameWorld {
       }
     }
 
-    this.state.stats.beansEarned = Math.round(this.state.stats.beansEarned * this.talentFx.beanMult * this.char.mods.beanMult);
+    // 加班强度：在强度 N 通关周五 → 记下该角色的最高强度（印章），并解锁 N+1
+    const ot = this.state.overtime;
+    if (victory && !this.state.isEndless && this.level.day >= LEVELS.length) {
+      const prevMax = maxOvertime(this.save, this.char.id);
+      if (ot > (this.save.overtime[this.char.id] || 0)) this.save.overtime[this.char.id] = ot;
+      const newMax = maxOvertime(this.save, this.char.id);
+      if (newMax > prevMax) this.state.overtimeUnlocked = newMax;
+    }
+    const otReward = OVERTIME_LEVELS[ot].reward;
+
+    this.state.stats.beansEarned = Math.round(
+      this.state.stats.beansEarned * this.talentFx.beanMult * this.char.mods.beanMult * otReward
+    );
     this.save.coffeeBeans += this.state.stats.beansEarned;
     if (this.state.stats.maxSquad > this.save.bestSquad) {
       this.save.bestSquad = this.state.stats.maxSquad;
     }
     if (this.state.stats.kills > this.save.bestKills) this.save.bestKills = this.state.stats.kills;
-    this.state.xpResult = applyRunXp(this.save, computeRunXp(this.state, victory, firstClear));
+
+    // 打工图鉴：并入本局遇到的敌人 + 新发现条目
+    this.enemies.seen.forEach((id) => this.discover(`e:${id}`));
+    const fresh = this.state.newCodex.filter((k) => this.save.codex.indexOf(k) < 0);
+    this.save.codex.push(...fresh);
+
+    const lines = computeRunXp(this.state, victory, firstClear);
+    if (otReward > 1) {
+      const base = lines.reduce((a, l) => a + l.xp, 0);
+      lines.push({ label: `加班强度 ${ot} · 绩效 ×${otReward}`, xp: Math.round(base * (otReward - 1)) });
+    }
+    if (fresh.length > 0) lines.push({ label: `图鉴新发现 ×${fresh.length}`, xp: fresh.length * CODEX_XP });
+    this.state.xpResult = applyRunXp(this.save, lines);
     this.state.newlyUnlockedBadges = evaluateNewBadges(this.state, this.save, victory);
     void SaveManager.save(this.save);
     this.uiCallbacks.onPhaseChange(this.state.phase, this.state, this.save);

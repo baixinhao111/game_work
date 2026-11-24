@@ -7,6 +7,7 @@ const MAX_ON_FIELD = 230;
 const FORMATIONS: EnemyFormation[] = ['CLUSTER', 'STAGGERED_HORDE', 'WEDGE', 'COLUMN', 'STAGGERED_HORDE'];
 /** 主线关卡里两次尸潮高峰的进度位置 */
 const SURGE_AT = [0.42, 0.78];
+const SURGE_AT_HARD = [0.3, 0.55, 0.8];
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
@@ -49,6 +50,8 @@ export class HordeDirector {
     const bossOn = world.bosses.boss.active;
     // 小队越强刷得越多（最多 2.5 倍）：火力上来后怪也要成片压上来，才有割草的量感
     const powerBoost = clamp(1 + st.squadCount / 120, 1, 2.5);
+    // 加班强度：尸潮更密
+    const otDensity = 1 + 0.12 * st.overtime;
 
     if (st.isEndless && wave !== this.lastEndlessWave) {
       this.lastEndlessWave = wave;
@@ -56,7 +59,8 @@ export class HordeDirector {
     }
 
     // —— 尸潮高峰 ——
-    const surgeList = st.isEndless ? [0.55] : SURGE_AT;
+    // 加班强度 3+：多一波尸潮高峰
+    const surgeList = st.isEndless ? [0.55] : st.overtime >= 3 ? SURGE_AT_HARD : SURGE_AT;
     if (!bossOn && this.surgeIdx < surgeList.length && p >= surgeList[this.surgeIdx]) {
       this.surgeIdx++;
       this.surgeBursts = 3;
@@ -66,7 +70,7 @@ export class HordeDirector {
     if (this.surgeBursts > 0) {
       this.surgeBurstTimer -= dt;
       if (this.surgeBurstTimer <= 0) {
-        const n = Math.round(18 * dayScale * powerBoost * (tutorial ? 0.6 : 1));
+        const n = Math.round(18 * dayScale * powerBoost * otDensity * (tutorial ? 0.6 : 1));
         const center = (Math.random() - 0.5) * 90;
         E.spawnSwarm('unread_dot', n, 'STAGGERED_HORDE', hpScale, center);
         if (this.surgeBursts === 2) E.spawnSwarm('ddl_flame', 4, 'FLANK_S', hpScale);
@@ -106,8 +110,8 @@ export class HordeDirector {
     } else {
       // 前期轻、后期重：进度做 1.6 次方缓入，开局只刷零星几只，中后段火力起来了再上量
       const ramp = Math.pow(p, 1.6);
-      interval = lerp(3.0, 1.1, ramp) / (st.isEndless ? 1 + 0.06 * wave : 1);
-      size = Math.round(lerp(2, 12, ramp) * dayScale * powerBoost);
+      interval = lerp(3.0, 1.1, ramp) / (st.isEndless ? 1 + 0.06 * wave : 1) / (1 + 0.06 * st.overtime);
+      size = Math.round(lerp(2, 12, ramp) * dayScale * powerBoost * otDensity);
     }
     if (tutorial) size = Math.max(3, Math.round(size * 0.6));
     this.trickleTimer = interval;

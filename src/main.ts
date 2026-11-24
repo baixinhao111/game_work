@@ -192,6 +192,12 @@ function bootstrap(): void {
         world.applySettings(true);
         applyQuality();
       },
+      onSelectOvertime: (level) => {
+        world.selectedOvertime = level;
+        world.save.overtimeSel = level;
+        void SaveManager.save(world.save);
+      },
+      getSelectedOvertime: () => world.selectedOvertime,
       onSelectCharacter: (id) => {
         world.save.selectedCharacter = id;
         void spriteCache.ensureCharacter(id);

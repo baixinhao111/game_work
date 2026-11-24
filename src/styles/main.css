@@ -2788,3 +2788,213 @@ button.roster-item:not(:disabled):active {
   width: 58px;
   height: 58px;
 }
+
+/* ---------- 加班强度选择 ---------- */
+.ot-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.ot-label {
+  flex-shrink: 0;
+  margin-right: 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ot-label .ic {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+}
+
+.ot-chips {
+  flex: 1;
+  display: flex;
+}
+
+.ot-chips > * + * {
+  margin-left: 5px;
+}
+
+.ot-chip {
+  flex: 1;
+  height: 28px;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--ink);
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  box-shadow: 2px 2px 0 var(--ink);
+  cursor: pointer;
+}
+
+.ot-chip.active {
+  background: var(--red);
+  color: var(--paper);
+}
+
+.ot-chip.cleared:not(.active) {
+  background: #ffe0b0;
+}
+
+.ot-chip:disabled {
+  background: #d9d7cf;
+  color: #8a8a8a;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.ot-chip .ic {
+  width: 12px;
+  height: 12px;
+}
+
+.ot-rule {
+  margin-bottom: 8px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.4;
+  color: var(--ink);
+  background: #ffe0e8;
+  border: 2px dashed var(--red);
+  border-radius: 8px;
+}
+
+/* 印章：铜 / 银 / 金 */
+.medal {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 17px;
+  border: 1.5px solid var(--ink);
+  border-radius: 9px;
+  vertical-align: 2px;
+  color: var(--ink);
+}
+
+.medal.bronze {
+  background: #e0a46e;
+}
+
+.medal.silver {
+  background: #d6dde9;
+}
+
+.medal.gold {
+  background: #ffd23f;
+}
+
+/* ---------- 打工图鉴 ---------- */
+.codex-tabs {
+  width: 100%;
+  display: flex;
+  margin-bottom: 10px;
+}
+
+.codex-tabs > * + * {
+  margin-left: 5px;
+}
+
+.codex-tab {
+  flex: 1;
+  padding: 6px 2px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--ink);
+  background: #eceae2;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.codex-tab.active {
+  background: var(--yellow);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.codex-tab small {
+  display: block;
+  font-size: 9px;
+  font-weight: 800;
+  color: #5a5f78;
+}
+
+.codex-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-gap: 7px;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.codex-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 7px 4px 6px;
+  min-width: 0;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.codex-item.locked {
+  background: #e6e4dc;
+}
+
+.codex-thumb {
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--track-surface);
+  overflow: hidden;
+}
+
+.codex-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.codex-item.locked .codex-thumb img {
+  filter: brightness(0);
+  opacity: 0.45;
+}
+
+.codex-thumb .ic {
+  width: 26px;
+  height: 26px;
+}
+
+.codex-item b {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.codex-item small {
+  margin-top: 2px;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #5a5f78;
+}
+
+.menu-dock .dock-btn span {
+  font-size: 12px;
+}

@@ -486,6 +486,12 @@ export interface GameState {
   newlyUnlockedBadges: string[];
   /** 结算时写入：本局绩效经验与职级变化 */
   xpResult: RunXpResult | null;
+  /** 本局加班强度 0~5 */
+  overtime: number;
+  /** 本局新发现的图鉴条目 */
+  newCodex: string[];
+  /** 本局解锁的新加班强度（结算提示用） */
+  overtimeUnlocked: number | null;
   boss: BossRuntime;
   bossBannerTimer: number;
   hitstopTimer: number;
@@ -510,6 +516,10 @@ export interface GameState {
     bossTimeSec: number;
     /** 本局伤害来源统计（结算复盘用） */
     damage: Record<DamageSource, number>;
+    /** 被小怪 / 弹幕打中掉人的次数 */
+    hitsTaken: number;
+    /** 同时装备的外挂数量峰值 */
+    maxSidearms: number;
   };
 }
 
@@ -573,4 +583,10 @@ export interface SaveData {
   bestKills: number;
   /** v4：设置 */
   settings: GameSettings;
+  /** v4：每个角色通关周五的最高加班强度（0~5） */
+  overtime: Record<CharacterId, number>;
+  /** v4：上次选择的加班强度 */
+  overtimeSel: number;
+  /** v4：打工图鉴已发现的条目 */
+  codex: string[];
 }

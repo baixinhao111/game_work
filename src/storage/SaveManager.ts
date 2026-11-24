@@ -13,6 +13,10 @@ const STORAGE_KEY = 'mbdf_save_v3';
 export const SAVE_VERSION = 4;
 const CHARACTER_IDS: CharacterId[] = ['intern', 'coder', 'designer', 'pm', 'sales', 'cleaner'];
 
+function emptyOvertime(): Record<CharacterId, number> {
+  return { intern: 0, coder: 0, designer: 0, pm: 0, sales: 0, cleaner: 0 };
+}
+
 export function defaultSettings(): GameSettings {
   return { musicVolume: 0.8, sfxVolume: 0.9, vibration: true, lowFx: false, colorblind: false };
 }
@@ -58,7 +62,10 @@ function defaultSave(): SaveData {
     xp: 0,
     selectedCharacter: 'intern',
     bestKills: 0,
-    settings: defaultSettings()
+    settings: defaultSettings(),
+    overtime: emptyOvertime(),
+    overtimeSel: 0,
+    codex: []
   };
 }
 
@@ -112,7 +119,17 @@ export function parseSave(raw: string, fromV1: boolean): SaveData | null {
       xp,
       selectedCharacter: selected,
       bestKills: safeInt(parsed.bestKills, 0, 1e9),
-      settings: parseSettings(parsed.settings)
+      settings: parseSettings(parsed.settings),
+      overtime: (() => {
+        const o = emptyOvertime();
+        const raw = (parsed.overtime ?? {}) as Partial<Record<CharacterId, number>>;
+        for (const id of CHARACTER_IDS) o[id] = safeInt(raw[id], 0, 5);
+        return o;
+      })(),
+      overtimeSel: safeInt(parsed.overtimeSel, 0, 5),
+      codex: Array.isArray(parsed.codex)
+        ? Array.from(new Set(parsed.codex.filter((x): x is string => typeof x === 'string'))).slice(0, 500)
+        : []
     };
   } catch {
     return null;
