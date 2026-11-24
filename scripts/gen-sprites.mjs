@@ -17,6 +17,19 @@ const STYLE =
   'no shadow on background, no extra floating debris, no border, no watermark.';
 
 export const PROMPTS = {
+  // ---- v1.0 角色：小队单位（背影）----
+  hero_coder: 'Game character sprite for a top-down runner, full body, seen from BEHIND in a 3/4 back view, running forward and slightly to the right up the screen, same chibi proportions as a mobile hero unit (big head, short legs), centered, a young male programmer in a red-and-navy plaid flannel shirt and jeans, messy black hair, black-rim glasses, a laptop backpack covered in stickers, holding a chunky glowing RGB mechanical keyboard like a shotgun.',
+  hero_designer: 'Game character sprite for a top-down runner, full body, seen from BEHIND in a 3/4 back view, running forward and slightly to the right up the screen, same chibi proportions as a mobile hero unit (big head, short legs), centered, a young female designer with a lavender bob haircut and a black beret, oversized purple sweater, huge white noise-cancelling headphones emitting mint-green sound wave rings, holding a stylus pen.',
+  hero_pm: 'Game character sprite for a top-down runner, full body, seen from BEHIND in a 3/4 back view, running forward and slightly to the right up the screen, same chibi proportions as a mobile hero unit (big head, short legs), centered, a product manager in an orange quarter-zip vest over a white shirt and khaki pants, holding a tablet showing a giant pie chart, a small yellow food-delivery drone carrying a box hovering above his shoulder.',
+  hero_sales: 'Game character sprite for a top-down runner, full body, seen from BEHIND in a 3/4 back view, running forward and slightly to the right up the screen, same chibi proportions as a mobile hero unit (big head, short legs), centered, a confident salesperson in a sharp mustard-gold blazer and black pants, slicked-back hair, a phone headset, holding a briefcase, two small purple robotic AI hover pods floating beside the shoulders.',
+  hero_cleaner: 'Game character sprite for a top-down runner, full body, seen from BEHIND in a 3/4 back view, running forward and slightly to the right up the screen, same chibi proportions as a mobile hero unit (big head, short legs), centered, a sturdy cheerful middle-aged Chinese cleaning lady in a light-blue cleaning uniform with a white apron, hair bun in a hairnet, swinging a big straw broom with a swirling dust wind trail.',
+  // ---- v1.0 角色：选择界面半身像（正面）----
+  face_intern: 'Character select portrait, bust shot from the chest up, front-facing, big expressive cartoon face, centered, slight 3/4 angle, sticker style with a clean silhouette, a tired but cheeky young office intern in a mint-green hoodie with big yellow headphones around the neck, dark eye circles, sipping an iced americano through a straw, mischievous grin.',
+  face_coder: 'Character select portrait, bust shot from the chest up, front-facing, big expressive cartoon face, centered, slight 3/4 angle, sticker style with a clean silhouette, a young male programmer in a red-and-navy plaid flannel shirt, messy black hair, black-rim glasses reflecting green code, smug confident smirk, holding up an RGB mechanical keyboard.',
+  face_designer: 'Character select portrait, bust shot from the chest up, front-facing, big expressive cartoon face, centered, slight 3/4 angle, sticker style with a clean silhouette, a young female designer with a lavender bob and black beret, oversized purple sweater, white headphones, rolling her eyes with an unimpressed artsy expression, holding a color palette.',
+  face_pm: 'Character select portrait, bust shot from the chest up, front-facing, big expressive cartoon face, centered, slight 3/4 angle, sticker style with a clean silhouette, a product manager in an orange quarter-zip vest, overly enthusiastic big smile, pointing at a tablet with a huge pie chart, tiny yellow delivery drone next to his head.',
+  face_sales: 'Character select portrait, bust shot from the chest up, front-facing, big expressive cartoon face, centered, slight 3/4 angle, sticker style with a clean silhouette, a confident salesperson in a mustard-gold blazer, slicked-back hair, phone headset, winking and giving a thumbs up, gold coin sparkle.',
+  face_cleaner: 'Character select portrait, bust shot from the chest up, front-facing, big expressive cartoon face, centered, slight 3/4 angle, sticker style with a clean silhouette, a sturdy cheerful middle-aged Chinese cleaning lady in a light-blue uniform and white apron, hair bun in a hairnet, holding a straw broom like a kung fu master, calm wise smile.',
   boss_projector:
     'Game boss sprite, full body, centered, front-facing 3/4 view: a giant angry floating office projector monster ' +
     'with a glowing mint-green lens eye, purple plastic body, little robotic arms holding a red laser pointer, ' +
@@ -45,6 +58,7 @@ async function generate(name) {
     body: JSON.stringify({
       model: MODEL,
       modalities: ['image'],
+      image_config: { aspect_ratio: '1:1' },
       messages: [{ role: 'user', content: `${PROMPTS[name]} ${STYLE}` }]
     })
   });

@@ -2764,3 +2764,27 @@ button.roster-item:not(:disabled):active {
   border-color: var(--ink);
   box-shadow: 4px 4px 0 var(--purple);
 }
+
+/* 角色半身像：铺满头像框 */
+.rank-avatar img.face,
+.char-slot-avatar img.face {
+  width: 100%;
+  height: 100%;
+  margin-top: 0;
+  object-fit: cover;
+  object-position: 50% 20%;
+}
+
+.char-slot-avatar img.face.silhouette {
+  filter: brightness(0);
+  opacity: 0.55;
+}
+
+.roster-item.locked .char-slot-avatar {
+  background: #b9b7b0;
+}
+
+.promo-unlock .promo-char .char-slot-avatar {
+  width: 58px;
+  height: 58px;
+}

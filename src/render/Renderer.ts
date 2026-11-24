@@ -18,7 +18,7 @@ import { getGateFlipCap, isGateShootable } from '../game/GateSystem';
 import type { GameWorld } from '../game/GameWorld';
 import type { BossRuntime, BossShotKind, Enemy, Gate } from '../game/types';
 import { ensureCanvasRoundRect } from './canvasCompat';
-import type { CachedSprite, SpriteCache } from './SpriteCache';
+import { CHARACTER_SPRITE, type CachedSprite, type SpriteCache } from './SpriteCache';
 
 const CLOCK_MARKS = ['09:00', '11:00', '13:00', '15:00', '17:30', '18:00'];
 /** Boss 主题色：蓄力光晕、出招闪光、弹道预告 */
@@ -1732,23 +1732,32 @@ export class Renderer {
       ctx.globalAlpha = 0.55;
     }
 
+    // 1 人单位换成出战角色的形象（未加载完时先用实习生）
+    const charKey = CHARACTER_SPRITE[world.char.id];
+    const charSpRaw = this.sprites.get(charKey);
+    const charSp = charSpRaw.loaded ? charSpRaw : this.sprites.get('heroSlacker');
     for (let i = units.length - 1; i >= 0; i--) {
       const u = units[i];
       const y = PLAYER_Y + u.dy;
       const sx = projectX(world.squad.leaderLaneX + u.dx, y);
+      // 5 人合体单位：实习生沿用原来的「突击队员」，其他职业用放大的本职业形象
+      const useCharFor5 = u.tier === 5 && world.char.id !== 'intern' && charSpRaw.loaded;
       const sp =
         u.tier === 10
           ? this.sprites.get('heroMech')
           : u.tier === 5
-            ? this.sprites.get('heroStriker')
-            : this.sprites.get('heroSlacker');
+            ? useCharFor5
+              ? charSp
+              : this.sprites.get('heroStriker')
+            : charSp;
 
       const s = depthScale(y);
       const runWave = Math.sin(t * 14 + u.phase);
       const bob = -Math.abs(runWave) * 3.2;
       const tilt = runWave * 0.065;
-      const w = sp.logicalW * s;
-      const h = sp.logicalH * s;
+      const k = useCharFor5 ? 1.25 : 1;
+      const w = sp.logicalW * s * k;
+      const h = sp.logicalH * s * k;
 
       ctx.save();
       ctx.translate(sx, y + bob);

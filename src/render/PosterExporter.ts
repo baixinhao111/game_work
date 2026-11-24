@@ -7,7 +7,9 @@ import { WEAPONS } from '../data/weapons';
 import { EndlessDirector } from '../game/EndlessDirector';
 import type { GameState, SaveData } from '../game/types';
 import { ensureCanvasRoundRect } from './canvasCompat';
-import type { SpriteCache } from './SpriteCache';
+import { CHARACTER_SPRITE, type SpriteCache } from './SpriteCache';
+import { getCharacter } from '../data/characters';
+import { RANKS, rankForXp } from '../data/ranks';
 
 const BOSS_SPRITE_KEYS = {
   alarm: 'bossAlarm',
@@ -88,7 +90,8 @@ export class PosterExporter {
     ctx.font = '800 20px sans-serif';
     ctx.textAlign = 'left';
     // 海报要 toDataURL 导出，不画 SVG 图标（老 iOS WebView 会因此判定画布受污染而导出失败）
-    ctx.fillText(`${dateStr}   工牌 NO.${save.workerCode}`, 70, 146);
+    const jobTitle = RANKS[rankForXp(save.xp) - 1].title;
+    ctx.fillText(`${dateStr}   工牌 NO.${save.workerCode} · ${jobTitle}`, 70, 146);
     ctx.fillStyle = PALETTE.purple;
     ctx.font = '900 23px sans-serif';
     ctx.fillText(modeLabel, 70, 182);
@@ -102,7 +105,9 @@ export class PosterExporter {
     ctx.fill();
     ctx.stroke();
 
-    const heroSp = sprites.get('heroSlacker');
+    const runChar = getCharacter(state.character);
+    const chSp = sprites.get(CHARACTER_SPRITE[runChar.id]);
+    const heroSp = chSp.loaded ? chSp : sprites.get('heroSlacker');
     const bossId = state.isEndless
       ? EndlessDirector.getBossForWave(state.endlessWave)
       : LEVELS[state.levelDay - 1].bossId;
@@ -110,6 +115,10 @@ export class PosterExporter {
 
     ctx.drawImage(heroSp.canvas, 130, 232, 138, 138);
     ctx.drawImage(bossSp.canvas, W - 290, 224, 152, 152);
+    ctx.fillStyle = PALETTE.paper;
+    ctx.font = '900 18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(runChar.name, 199, 386);
 
     // VS 贴纸
     ctx.save();

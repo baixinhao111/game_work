@@ -1,5 +1,5 @@
 import { PALETTE } from '../data/palette';
-import type { BossStyle } from '../game/types';
+import type { BossStyle, CharacterId } from '../game/types';
 
 export interface CachedSprite {
   canvas: HTMLCanvasElement;
@@ -44,11 +44,34 @@ const BOSS_SPECS = [
   { key: 'bossKpi', style: 'kpi', file: 'boss_kpi.webp', w: 166, h: 166, fallbackColor: PALETTE.yellow }
 ] as const;
 
-export type SpriteKey = (typeof CORE_SPECS)[number]['key'] | (typeof BOSS_SPECS)[number]['key'] | 'enemyUnread';
+/** v1.0 角色的小队单位（实习生沿用 heroSlacker）；选中后再按需加载 */
+const CHAR_SPECS = [
+  { key: 'heroCoder', char: 'coder', file: 'hero_coder.webp', w: 50, h: 50, fallbackColor: PALETTE.mint },
+  { key: 'heroDesigner', char: 'designer', file: 'hero_designer.webp', w: 50, h: 50, fallbackColor: PALETTE.purple },
+  { key: 'heroPm', char: 'pm', file: 'hero_pm.webp', w: 50, h: 50, fallbackColor: PALETTE.yellow },
+  { key: 'heroSales', char: 'sales', file: 'hero_sales.webp', w: 50, h: 50, fallbackColor: PALETTE.yellow },
+  { key: 'heroCleaner', char: 'cleaner', file: 'hero_cleaner.webp', w: 52, h: 52, fallbackColor: PALETTE.coffee }
+] as const;
+
+export const CHARACTER_SPRITE: Record<CharacterId, SpriteKey> = {
+  intern: 'heroSlacker',
+  coder: 'heroCoder',
+  designer: 'heroDesigner',
+  pm: 'heroPm',
+  sales: 'heroSales',
+  cleaner: 'heroCleaner'
+};
+
+export type SpriteKey =
+  | (typeof CORE_SPECS)[number]['key']
+  | (typeof BOSS_SPECS)[number]['key']
+  | (typeof CHAR_SPECS)[number]['key']
+  | 'enemyUnread';
 
 export class SpriteCache {
   private readonly map = new Map<SpriteKey, CachedSprite>();
   private readonly bossLoads = new Map<BossStyle, Promise<void>>();
+  private readonly charLoads = new Map<CharacterId, Promise<void>>();
 
   constructor() {
     for (const spec of CORE_SPECS) {
@@ -57,7 +80,23 @@ export class SpriteCache {
     for (const spec of BOSS_SPECS) {
       this.map.set(spec.key, this.createPlaceholder(spec.w, spec.h, spec.fallbackColor));
     }
+    for (const spec of CHAR_SPECS) {
+      this.map.set(spec.key, this.createPlaceholder(spec.w, spec.h, spec.fallbackColor));
+    }
     this.map.set('enemyUnread', this.createUnreadSprite());
+  }
+
+  /** 按出战角色按需加载小队单位贴图（自动去重） */
+  ensureCharacter(id: CharacterId): Promise<void> {
+    const existing = this.charLoads.get(id);
+    if (existing) return existing;
+    const spec = CHAR_SPECS.find((c) => c.char === id);
+    if (!spec) return Promise.resolve();
+    const task = this.loadAndCache(spec).catch(() => {
+      // 加载失败时渲染层回退到实习生贴图
+    });
+    this.charLoads.set(id, task);
+    return task;
   }
 
   get(key: SpriteKey): CachedSprite {

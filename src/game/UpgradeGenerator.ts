@@ -60,7 +60,7 @@ export function sidearmOption(load: Loadout, weapon: WeaponId): UpgradeOption | 
     id: `side_${weapon}`,
     kind: 'SIDEARM',
     title: have ? `{i:magnet} 外挂升级 · ${w.shortTag} Lv.${have.level + 1}` : `{i:magnet} 外挂 · ${w.shortTag}`,
-    desc: have ? '外挂火力 +25%' : `挂在小队两侧自动开火（约主武器 35% 火力）：${w.desc}`,
+    desc: have ? '外挂火力 +25%' : `挂在小队两侧自动开火（约主武器 25% 火力）：${w.desc}`,
     color: w.color,
     weaponId: weapon
   };

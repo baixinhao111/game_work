@@ -120,6 +120,7 @@ function bootstrap(): void {
     {
       onStart: () => {
         input.resetState();
+        void spriteCache.ensureCharacter(world.save.selectedCharacter);
         ensureBossForDay(world.selectedDay);
         world.startNewRun(world.selectedDay);
       },
@@ -129,6 +130,7 @@ function bootstrap(): void {
       },
       onStartEndless: () => {
         input.resetState();
+        void spriteCache.ensureCharacter(world.save.selectedCharacter);
         world.startEndlessRun();
       },
       onUnlockAudio: () => {
@@ -192,6 +194,7 @@ function bootstrap(): void {
       },
       onSelectCharacter: (id) => {
         world.save.selectedCharacter = id;
+        void spriteCache.ensureCharacter(id);
         void SaveManager.save(world.save);
         audio.playGateGood();
       },
@@ -212,6 +215,7 @@ function bootstrap(): void {
   ui.syncPhase(world.state.phase, world.state, world.save);
   void world.hydrateSave().then(() => {
     applyQuality();
+    void spriteCache.ensureCharacter(world.save.selectedCharacter);
     ensureBossForDay(world.selectedDay);
     // 新玩家跳过菜单：显示开场页，点一下直接开打周一
     if (!world.save.tutorialDone && world.state.phase === 'MENU') ui.showIntro();

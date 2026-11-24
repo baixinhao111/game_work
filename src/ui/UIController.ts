@@ -13,6 +13,10 @@ import type { CharacterId, DamageSource, GamePhase, GameState, RunXpResult, Save
 import { saveImageToAlbum } from '../platform/MiniToolBridge';
 import { hydrateIcons, iconSvg, richHtml } from './icons';
 
+/** 角色半身像 / 小队形象 */
+const faceImg = (id: CharacterId, cls = '') => `<img class="${cls}" src="./assets/sprites/face_${id}.webp" alt="" />`;
+const heroFile = (id: CharacterId) => (id === 'intern' ? 'hero_slacker.webp' : `hero_${id}.webp`);
+
 /** 只在内容变化时写 innerHTML（syncHUD 每帧调用，避免反复重建 DOM） */
 function setRich(el: HTMLElement, text: string): void {
   if (el.dataset.rich === text) return;
@@ -425,6 +429,15 @@ export class UIController {
 
     // 出战同事 + 下一位解锁提示
     const ch = getCharacter(save.selectedCharacter);
+    const face = faceImg(ch.id, 'face');
+    const rankAvatar = document.getElementById('rank-avatar')!;
+    if (rankAvatar.dataset.char !== ch.id) {
+      rankAvatar.dataset.char = ch.id;
+      rankAvatar.innerHTML = face;
+      document.getElementById('char-slot-avatar')!.innerHTML = face;
+      (document.querySelector('.hero-me') as HTMLImageElement).src = `./assets/sprites/${heroFile(ch.id)}`;
+    }
+    document.getElementById('char-slot-avatar')!.style.background = ch.color;
     document.getElementById('char-slot-name')!.textContent = ch.name;
     document.getElementById('char-slot-sub')!.textContent = `${ch.weaponName} · 大招「${ch.ultName}」`;
     const next = nextRankUnlock(save);
@@ -488,10 +501,7 @@ export class UIController {
       const open = isCharacterUnlocked(c, save);
       const current = c.id === save.selectedCharacter;
       const hidden = !open && 'kills' in c.unlock;
-      const avatar =
-        c.id === 'intern'
-          ? '<img src="./assets/sprites/hero_slacker.webp" alt="" />'
-          : iconSvg(open ? c.icon : 'lock');
+      const avatar = open ? faceImg(c.id, 'face') : hidden ? iconSvg('lock') : faceImg(c.id, 'face silhouette');
       const state = current
         ? '出战中'
         : open
@@ -854,7 +864,7 @@ export class UIController {
     const ch = r.unlocks ? CHARACTERS.find((c) => c.id === r.unlocks) : null;
     const extra = r.reward.replace(/^新同事：[^·]+(· )?/, '').trim();
     document.getElementById('promo-unlock')!.innerHTML = ch
-      ? `<div class="promo-char"><span class="char-slot-avatar" style="background:${ch.color}">${iconSvg(ch.icon)}</span><span><small>解锁新同事</small><b>${ch.name}</b>${ch.role}</span></div>${extra ? `<div style="margin-top:6px">${extra}</div>` : ''}`
+      ? `<div class="promo-char"><span class="char-slot-avatar" style="background:${ch.color}">${faceImg(ch.id, 'face')}</span><span><small>解锁新同事</small><b>${ch.name}</b>${ch.role}</span></div>${extra ? `<div style="margin-top:6px">${extra}</div>` : ''}`
       : r.reward;
     this.promoOverlay.classList.remove('hidden');
     this.actions.onUnlockAudio();

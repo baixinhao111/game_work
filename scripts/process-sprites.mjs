@@ -21,7 +21,19 @@ const MANIFEST = [
   { name: 'boss_projector', src: 'boss_projector.png', size: 384 },
   { name: 'boss_hydra', src: 'boss_hydra.png', size: 384 },
   { name: 'boss_server', src: 'boss_server.png', size: 384 },
-  { name: 'boss_kpi', src: 'boss_kpi.png', size: 384 }
+  { name: 'boss_kpi', src: 'boss_kpi.png', size: 384 },
+  // v1.0 角色：小队单位（背影）+ 选择界面半身像
+  { name: 'hero_coder', src: 'hero_coder.png', size: 256 },
+  { name: 'hero_designer', src: 'hero_designer.png', size: 256 },
+  { name: 'hero_pm', src: 'hero_pm.png', size: 256 },
+  { name: 'hero_sales', src: 'hero_sales.png', size: 256 },
+  { name: 'hero_cleaner', src: 'hero_cleaner.png', size: 256 },
+  { name: 'face_intern', src: 'face_intern.png', size: 192 },
+  { name: 'face_coder', src: 'face_coder.png', size: 192 },
+  { name: 'face_designer', src: 'face_designer.png', size: 192 },
+  { name: 'face_pm', src: 'face_pm.png', size: 192 },
+  { name: 'face_sales', src: 'face_sales.png', size: 192 },
+  { name: 'face_cleaner', src: 'face_cleaner.png', size: 192 }
 ];
 
 function getImageSize(filePath) {
