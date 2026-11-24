@@ -928,7 +928,6 @@ export class GameWorld {
       },
       consumeShieldOrSquad: (rawLoss) => {
         if (this.state.phase !== 'PLAYING') return;
-        if (this.state.invulnTimer > 0) return;
         const loss = Math.max(1, Math.round(rawLoss * this.talentFx.lossMult));
         const px = projectX(this.squad.leaderLaneX, PLAYER_Y);
         if (this.state.shieldCount > 0) {

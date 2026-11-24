@@ -95,25 +95,25 @@ export const CHARACTERS: CharacterConfig[] = [
     weapon: 'headphone', weaponName: '降噪耳机声波环',
     passiveName: '审美降压', passiveDesc: '所有子弹自带轻度减速 · 代价：伤害 -25%',
     ultName: '五彩斑斓黑', ultDesc: '时间冻结 3 秒（敌人和 Boss 弹幕定格），期间伤害 ×1.5', ult: 'freeze', ultStampSub: '时 间 冻 结 · 慢 慢 改',
-    mods: { ...BASE, baseChill: 0.6, damageMult: 0.75, ultChargeMult: 0.65 },
+    mods: { ...BASE, baseChill: 0.6, damageMult: 0.75, ultChargeMult: 0.55 },
     affixBias: { chill: 3, pierce: 2, chain_lightning: 1.5 }, exclusive: ['premium_gray', 'pixel_align'],
     unlock: { rank: 3 }, unlockHint: '升职到「主管」解锁'
   },
   {
     id: 'pm', name: '画饼产品经理', role: '成长流 · 无人机', icon: 'person', color: '#FF7A3D',
     weapon: 'drone', weaponName: '外卖无人机追踪弹',
-    passiveName: '需求放大', passiveDesc: '「+」蓝门人数 +15% · 代价：射速 -10%',
+    passiveName: '需求放大', passiveDesc: '「+」蓝门人数 +10% · 代价：射速 -10%',
     ultName: '画大饼', ultDesc: '接下来 2 扇「+」蓝门人数再 +30%，并画饼充饥 1.5 秒无敌', ult: 'big_pie', ultStampSub: '饼 已 画 好 · 人 马 到 位',
-    mods: { ...BASE, blueGateMult: 1.15, fireRateMult: 0.9, ultChargeMult: 0.7 },
+    mods: { ...BASE, blueGateMult: 1.1, fireRateMult: 0.9, ultChargeMult: 0.7 },
     affixBias: { split: 3, sick_leave: 2, kill_haste: 1.5 }, exclusive: ['scope_creep', 'prd_rush'],
     unlock: { rank: 4 }, unlockHint: '升职到「经理」解锁'
   },
   {
     id: 'sales', name: '拉单销售', role: '爆发流 · 暴击浮游炮', icon: 'person', color: '#FFC93C',
     weapon: 'ai_pod', weaponName: 'AI 外挂浮游炮',
-    passiveName: '提成到手', passiveDesc: '咖啡豆 +30%、暴击率 +10% · 代价：开局少 3 人',
+    passiveName: '提成到手', passiveDesc: '咖啡豆 +30%、暴击率 +10% · 代价：开局少 2 人',
     ultName: '冲业绩', ultDesc: '6 秒内射速 ×2.5 且必定暴击', ult: 'rush', ultStampSub: '本 月 业 绩 · 冲 冲 冲',
-    mods: { ...BASE, beanMult: 1.3, critBonus: 0.1, startSquad: -3 },
+    mods: { ...BASE, beanMult: 1.3, critBonus: 0.1, startSquad: -2 },
     affixBias: { crit_rage: 3, kill_haste: 3, overtime_burn: 1.5 }, exclusive: ['big_client', 'double_commission'],
     unlock: { rank: 5 }, unlockHint: '升职到「总监」解锁'
   },

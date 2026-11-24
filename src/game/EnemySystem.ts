@@ -387,7 +387,8 @@ export class EnemySystem {
         // 撞上即同归于尽：敌人消失、小队减员。不再有“无敌帧白嫖”，每只都算数
         this.killEnemy(e, ctx, false);
         if (e.configId === 'ppt_pie') ctx.triggerQuip('PPT_HIT');
-        ctx.consumeShieldOrSquad(e.damageToSquad);
+        // 无敌时间（如画大饼）里撞上来的怪只会消失，不掉人；Boss 弹幕自己管无敌帧，不走这里
+        if (ctx.invulnTimer <= 0) ctx.consumeShieldOrSquad(e.damageToSquad);
         continue;
       }
 
