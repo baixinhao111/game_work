@@ -5,7 +5,7 @@ import { CODEX, CODEX_TABS, codexProgress, isDiscovered, type CodexTab } from '.
 import { MEDAL_NAME, maxOvertime, medalOf, OVERTIME_LEVELS, overtimeOf } from '../data/overtime';
 import { AFFIXES, weaponDisplayName } from '../data/weapons';
 import { BOSSES } from '../data/enemies';
-import { LEVELS } from '../data/levels';
+import { CHAPTERS, chapterOf, isChapterFinal, LEVELS } from '../data/levels';
 import type { ActiveQuip } from '../data/quips';
 import { SYNERGIES } from '../data/synergies';
 import { talentCost, TALENT_ORDER, TALENTS } from '../data/talents';
@@ -31,7 +31,8 @@ const BOSS_IMAGES = {
   projector: 'boss_projector.webp',
   hydra: 'boss_hydra.webp',
   server: 'boss_server.webp',
-  kpi: 'boss_kpi.webp'
+  kpi: 'boss_kpi.webp',
+  judges: 'boss_judges.webp'
 } as const;
 
 export interface UIActions {
@@ -354,6 +355,16 @@ export class UIController {
       this.actions.onPickUpgrade(Number(btn.dataset.upidx));
     });
 
+    document.getElementById('chapter-tabs')!.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest('button[data-ch]') as HTMLButtonElement | null;
+      if (!btn || btn.disabled) return;
+      const c = CHAPTERS.find((x) => x.id === Number(btn.dataset.ch))!;
+      const save = this.actions.getSave();
+      // 切到该章最靠后的已解锁关
+      this.actions.onSelectDay(Math.min(c.last, Math.max(c.first, save.highestCleared + 1)));
+      this.renderMenu(save);
+    });
+
     this.dayPicker.addEventListener('click', (ev) => {
       const btn = (ev.target as HTMLElement).closest('button[data-day]') as HTMLButtonElement | null;
       if (!btn || btn.disabled) return;
@@ -438,7 +449,7 @@ export class UIController {
     document.getElementById('btn-endless')!.classList.toggle('hidden', save.highestCleared < 1);
     document.getElementById('menu-dock')!.classList.toggle('hidden', !veteran);
     this.menuBeans.textContent = String(save.coffeeBeans);
-    this.menuClears.textContent = `已通关 ${save.highestCleared}/${LEVELS.length}`;
+
     this.endlessBestHint.textContent =
       save.endlessBestWave > 0 ? `最高第 ${save.endlessBestWave} 波` : '无限波次';
     this.badgeCountHint.textContent = `${save.unlockedBadges.length}/${BADGES.length}`;
@@ -478,16 +489,25 @@ export class UIController {
 
     const selected = this.actions.getSelectedDay();
     const unlocked = Math.min(LEVELS.length, save.highestCleared + 1);
-    this.dayPicker.innerHTML = LEVELS.map((lv) => {
+    // 章节标签：通关第一章周五后开放第二章
+    const chap = chapterOf(selected);
+    document.getElementById('chapter-tabs')!.innerHTML = CHAPTERS.map((c) => {
+      const open = c.first <= unlocked;
+      return `<button type="button" class="chapter-tab ${c.id === chap.id ? 'active' : ''}" data-ch="${c.id}" ${open ? '' : 'disabled'}>${open ? '' : iconSvg('lock')}${c.name}</button>`;
+    }).join('');
+    const clearedInCh = Math.max(0, Math.min(chap.last, save.highestCleared) - chap.first + 1);
+    this.menuClears.textContent = `已通关 ${clearedInCh}/${chap.last - chap.first + 1}`;
+    this.dayPicker.classList.toggle('six', chap.last - chap.first + 1 > 5);
+    this.dayPicker.innerHTML = LEVELS.filter((lv) => lv.chapter === chap.id).map((lv) => {
       const locked = lv.day > unlocked;
       const cls = ['day-chip', lv.day === selected ? 'active' : '', lv.day <= save.highestCleared ? 'cleared' : '']
         .filter(Boolean)
         .join(' ');
-      return `<button type="button" class="${cls}" data-day="${lv.day}" ${locked ? 'disabled' : ''} aria-pressed="${lv.day === selected}">${lv.weekday.slice(1)}<small>${locked ? iconSvg('lock') : lv.day <= save.highestCleared ? iconSvg('check') : 'NEW'}</small></button>`;
+      return `<button type="button" class="${cls}" data-day="${lv.day}" ${locked ? 'disabled' : ''} aria-pressed="${lv.day === selected}">${lv.short}<small>${locked ? iconSvg('lock') : lv.day <= save.highestCleared ? iconSvg('check') : 'NEW'}</small></button>`;
     }).join('');
 
     const lv = LEVELS[selected - 1];
-    this.stageDay.textContent = `DAY 0${lv.day} · ${lv.weekday}`;
+    this.stageDay.textContent = `DAY ${String(lv.day).padStart(2, '0')} · ${lv.weekday}`;
     this.stageName.textContent = `${lv.title}（${lv.subtitle}）`;
     this.stageBoss.textContent = `关底 Boss：${BOSSES[lv.bossId].name}`;
     const bossImg = document.getElementById('menu-boss-img') as HTMLImageElement | null;
@@ -805,7 +825,11 @@ export class UIController {
       const isSSR = state.squadCount >= 40 && state.stats.gatesFlipped >= 1 && state.stats.bossTimeSec < 35;
       this.resultRankTag.className = 'sticky-tag mint';
       this.resultRankTag.textContent = isSSR ? 'SSR · 工位赛博战神' : 'SR · 带薪突围大师';
-      this.resultTitle.textContent = lv.day === LEVELS.length ? '周五 17:59 · 周末到手！' : '18:00 准点下班！';
+      this.resultTitle.textContent = isChapterFinal(lv.day)
+        ? lv.chapter === 2
+          ? '季度评审 · 绩效 S！'
+          : '周五 17:59 · 周末到手！'
+        : '18:00 准点下班！';
       this.resultComment.textContent = isSSR
         ? `${lv.weekday}的 Boss 还没反应过来就被你按在地上摩擦，今日适合立刻关机走人。`
         : `靠着最后一口冰美式与神走位，成功把${lv.weekday}扛到了下班！`;

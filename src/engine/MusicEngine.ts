@@ -201,7 +201,7 @@ export class MusicEngine {
 
     const st = world.state;
     const boss = world.bosses.boss;
-    const day = Math.max(1, Math.min(5, st.levelDay || 1));
+    const day = Math.max(1, Math.min(DAY_TRANSPOSE.length, st.levelDay || 1));
     const next: MusicTarget = { theme: null, intensity: 2, transpose: DAY_TRANSPOSE[day - 1] ?? 0, tempoMul: 1, alarm: false };
 
     if (st.phase === 'MENU') {
@@ -223,7 +223,8 @@ export class MusicEngine {
         next.alarm = boss.enraged;
         next.tempoMul = boss.enraged ? 1.08 : 1;
       } else {
-        next.theme = 'stage';
+        // 第二章（第 6 关起）换紧张的小调主题
+        next.theme = !st.isEndless && st.levelDay >= 6 ? 'stage2' : 'stage';
         const crowd = world.enemies.enemies.activeCount;
         next.intensity = st.elapsedSec < 5 ? 1 : st.squadCount >= 25 || crowd >= 18 || st.elapsedSec > 20 ? 3 : 2;
       }

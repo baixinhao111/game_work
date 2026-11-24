@@ -485,7 +485,18 @@ export class CombatSystem {
         if (dx * dx + dy * dy > hitR * hitR) continue;
 
         b.hitIds.add(e.uid);
-        this.applyHit(e, b.damage, b.isCrit, b.chillDuration, b.deepChillDuration, enemies, ctx, bulletSource(b), b.burn);
+        this.applyHit(
+          e,
+          b.damage,
+          b.isCrit,
+          b.chillDuration,
+          b.deepChillDuration,
+          enemies,
+          ctx,
+          bulletSource(b),
+          b.burn,
+          b.bounced || b.kind === 'beam' || b.kind === 'drone' || b.kind === 'split'
+        );
         // 气旋吸尘器（扫帚进化）：把被扫到的小怪往小队正前方吸
         if (b.kind === 'broom' && b.evolved && e.active) e.laneX += (ctx.leaderLaneX - e.laneX) * 0.3;
 
@@ -554,8 +565,17 @@ export class CombatSystem {
     enemies: EnemySystem,
     ctx: CombatContext,
     src: DamageSource,
-    burn = 0
+    burn = 0,
+    bypassShield = false
   ): void {
+    // OKR 复读机的正面护盾先吃伤害（弹射 / 穿透射线 / 追踪 / 分裂弹 / 电弧能绕过去）
+    if (e.shieldHp > 0 && !bypassShield) {
+      const take = Math.min(e.shieldHp, dmg);
+      e.shieldHp -= take;
+      dmg -= take;
+      e.flashTimer = 0.04;
+      if (dmg <= 0) return;
+    }
     // 高级灰：被减速的敌人多吃 30% 伤害
     if (ctx.affixes.premium_gray > 0 && (e.chillTimer > 0 || e.deepChillTimer > 0)) dmg *= 1.3;
     if (burn > 0) {
@@ -618,7 +638,7 @@ export class CombatSystem {
         });
       }
       const iced = shatter && (next.chillTimer > 0 || next.deepChillTimer > 0);
-      this.applyHit(next, dmg * dmgScale * (iced ? 2 : 1), false, 0, 0, enemies, ctx, isSuperconduct || iced ? 'synergy' : 'affix');
+      this.applyHit(next, dmg * dmgScale * (iced ? 2 : 1), false, 0, 0, enemies, ctx, isSuperconduct || iced ? 'synergy' : 'affix', 0, true);
       from = next;
     }
   }

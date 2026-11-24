@@ -17,6 +17,17 @@ const STYLE =
   'no shadow on background, no extra floating debris, no border, no watermark.';
 
 export const PROMPTS = {
+  // ---- v1.0 第二章 ----
+  enemy_thief:
+    'Game enemy sprite, full body, centered, front-facing, chibi proportions: a sneaky office coworker in a gray suit and a black eye mask like a cartoon burglar, ' +
+    'grinning slyly, carrying a big sack labeled with a gold star (stolen credit), tiptoeing, small and quick.',
+  enemy_okr:
+    'Game enemy sprite, full body, centered, front-facing: a boxy retro robot made of a printer and a loudspeaker, a screen face showing a looping refresh arrow, ' +
+    'holding up a translucent hexagon energy shield in front of it with a target symbol, stubborn repeating machine, elite enemy.',
+  boss_judges:
+    'Game boss sprite, full body, centered, front-facing: a long judging table floating like a mech, behind it three stern evaluator judges sitting side by side — ' +
+    'a nerdy tech judge with glasses and a laptop, a business judge in a red blazer holding a scorecard, and a big boss judge in the middle with a gold tie and a gavel; ' +
+    'red score panels on the table front, menacing quarterly review panel.',
   // ---- v1.0 角色：小队单位（背影）----
   hero_coder: 'Game character sprite for a top-down runner, full body, seen from BEHIND in a 3/4 back view, running forward and slightly to the right up the screen, same chibi proportions as a mobile hero unit (big head, short legs), centered, a young male programmer in a red-and-navy plaid flannel shirt and jeans, messy black hair, black-rim glasses, a laptop backpack covered in stickers, holding a chunky glowing RGB mechanical keyboard like a shotgun.',
   hero_designer: 'Game character sprite for a top-down runner, full body, seen from BEHIND in a 3/4 back view, running forward and slightly to the right up the screen, same chibi proportions as a mobile hero unit (big head, short legs), centered, a young female designer with a lavender bob haircut and a black beret, oversized purple sweater, huge white noise-cancelling headphones emitting mint-green sound wave rings, holding a stylus pen.',

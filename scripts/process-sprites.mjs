@@ -33,7 +33,11 @@ const MANIFEST = [
   { name: 'face_designer', src: 'face_designer.png', size: 192 },
   { name: 'face_pm', src: 'face_pm.png', size: 192 },
   { name: 'face_sales', src: 'face_sales.png', size: 192 },
-  { name: 'face_cleaner', src: 'face_cleaner.png', size: 192 }
+  { name: 'face_cleaner', src: 'face_cleaner.png', size: 192 },
+  // v1.0 第二章
+  { name: 'enemy_thief', src: 'enemy_thief.png', size: 256 },
+  { name: 'enemy_okr', src: 'enemy_okr.png', size: 256 },
+  { name: 'boss_judges', src: 'boss_judges.png', size: 384 }
 ];
 
 function getImageSize(filePath) {

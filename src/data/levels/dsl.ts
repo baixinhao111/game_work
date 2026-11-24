@@ -185,3 +185,11 @@ export function swarm(
 export function boss(t: number, bossId: BossId): LevelWaveConfig {
   return { timeOffsetSec: t, type: 'BOSS', bossId };
 }
+
+/** 限时门：倒计时归零前是蓝门，超时变红门；射它可以续时间 */
+export const timed = (value: number, sec = 2.4): GateSpec => ({ ...plus(value), timedSec: sec });
+
+/** 第二章分岔路线：隔离带持续 duration 秒，KPI 路在 kpiSide 一侧 */
+export function fork(t: number, duration: number, kpiSide: 'LEFT' | 'RIGHT' = 'LEFT'): LevelWaveConfig {
+  return { timeOffsetSec: t, type: 'FORK', fork: { duration, kpiSide } };
+}

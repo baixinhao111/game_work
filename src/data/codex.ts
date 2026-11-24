@@ -37,14 +37,17 @@ const ENEMY_IMG: Partial<Record<string, string>> = {
   client_tweak: 'enemy_client_monster.webp',
   client_mini: 'enemy_client_monster.webp',
   ppt_pie: 'enemy_ppt_golem.webp',
-  ddl_flame: 'enemy_ddl_flame.webp'
+  ddl_flame: 'enemy_ddl_flame.webp',
+  credit_thief: 'enemy_thief.webp',
+  okr_repeater: 'enemy_okr.webp'
 };
 const BOSS_IMG: Record<string, string> = {
   alarm: 'boss_alarm.webp',
   projector: 'boss_projector.webp',
   hydra: 'boss_hydra.webp',
   server: 'boss_server.webp',
-  kpi: 'boss_kpi.webp'
+  kpi: 'boss_kpi.webp',
+  judges: 'boss_judges.webp'
 };
 
 export const CODEX: CodexEntry[] = [

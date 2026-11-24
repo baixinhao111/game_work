@@ -98,6 +98,33 @@ export const ENEMIES: Record<EnemyId, EnemyConfig> = {
     beansReward: 2,
     ultReward: 2.4,
     color: PALETTE.red
+  },
+  // ---- 第二章 ----
+  credit_thief: {
+    id: 'credit_thief',
+    name: '抢功同事',
+    hp: 46,
+    walkSpeed: 70,
+    homing: 150,
+    behavior: 'thief',
+    radius: 18,
+    damageToSquad: 0,
+    beansReward: 5,
+    ultReward: 3,
+    color: PALETTE.purple
+  },
+  okr_repeater: {
+    id: 'okr_repeater',
+    name: 'OKR 复读机',
+    hp: 200,
+    walkSpeed: 10,
+    homing: 14,
+    behavior: 'heavy',
+    radius: 26,
+    damageToSquad: 6,
+    beansReward: 9,
+    ultReward: 7,
+    color: PALETTE.mint
   }
 };
 
@@ -196,5 +223,30 @@ export const BOSSES: Record<BossId, BossConfig> = {
     shieldAt: [0.65, 0.3],
     shieldSummon: { enemyId: 'ppt_pie', count: 2, formation: 'LINE' },
     moveSummon: { enemyId: 'overtime_zombie', count: 14, formation: 'STAGGERED_HORDE' }
+  },
+  quarter_judges: {
+    id: 'quarter_judges',
+    name: '季度考核评审团',
+    subtitle: '第二章 BOSS · 三位评委轮流打分',
+    banner: '{i:warning} 季度考核评审团入场！',
+    spawnQuip: '请用三句话讲清楚你这个季度的价值。',
+    style: 'judges',
+    hp: 25000,
+    radius: 60,
+    beansReward: 300,
+    moves: ['fan5', 'ring_gap', 'fan5', 'bomb1'],
+    enragedMoves: ['slam', 'fan7', 'laser3', 'bomb3', 'cross'],
+    attackInterval: 1.6,
+    enragedInterval: 1.2,
+    enrageAt: 0.25,
+    shieldAt: [0.66, 0.33],
+    shieldSummon: { enemyId: 'credit_thief', count: 4, formation: 'FLANK_S' },
+    moveSummon: { enemyId: 'overtime_zombie', count: 14, formation: 'STAGGERED_HORDE' },
+    // 三位评委轮流：技术评委（弹幕扇面）→ 业务评委（激光 + 召唤抢功同事）→ 老板评委（全招式）
+    phases: [
+      { at: 1, name: '技术评委', moves: ['fan5', 'ring_gap', 'fan5', 'bomb1'] },
+      { at: 0.66, name: '业务评委', moves: ['laser2', 'summon', 'fan3', 'laser3', 'bomb3'] },
+      { at: 0.33, name: '老板评委', moves: ['cross', 'fan7', 'slam', 'laser3', 'summon'] }
+    ]
   }
 };

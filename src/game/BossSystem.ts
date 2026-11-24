@@ -76,6 +76,7 @@ export class BossSystem {
 
   private createEmpty(): BossRuntime {
     return {
+      phase: 0,
       active: false,
       id: 'monday_alarm',
       style: 'alarm',
@@ -272,8 +273,9 @@ export class BossSystem {
 
     if (b.y < b.homeY - 4 || b.shieldTimer > 0) return;
     b.attackTimer -= dt;
+    this.syncPhase(ctx);
     if (b.attackTimer <= 0) {
-      const moves = b.enraged ? cfg.enragedMoves : cfg.moves;
+      const moves = this.currentMoves();
       const move = moves[b.moveIdx % moves.length];
       b.moveIdx++;
       b.attackTimer = (b.enraged ? cfg.enragedInterval : cfg.attackInterval) * this.rateMult;
@@ -285,9 +287,39 @@ export class BossSystem {
   peekNextMove(): BossMove | null {
     const b = this.boss;
     if (!b.active) return null;
-    const cfg = BOSSES[b.id];
-    const moves = b.enraged ? cfg.enragedMoves : cfg.moves;
+    const moves = this.currentMoves();
     return moves[b.moveIdx % moves.length];
+  }
+
+  /** 当前招式组：红温优先；多阶段 Boss 按血量换组 */
+  private currentMoves(): BossMove[] {
+    const b = this.boss;
+    const cfg = BOSSES[b.id];
+    if (b.enraged) return cfg.enragedMoves;
+    if (cfg.phases) return cfg.phases[Math.min(b.phase, cfg.phases.length - 1)].moves;
+    return cfg.moves;
+  }
+
+  /** 评审团：血量跌破阈值时换下一位评委（浮字 + 震屏 + 吐槽） */
+  private syncPhase(ctx: EnemyStepContext): void {
+    const b = this.boss;
+    const phases = BOSSES[b.id].phases;
+    if (!phases) return;
+    let p = 0;
+    for (let i = 0; i < phases.length; i++) if (b.hp <= b.maxHp * phases[i].at) p = i;
+    if (p > b.phase) {
+      b.phase = p;
+      b.moveIdx = 0;
+      ctx.triggerShake(6, 0.25);
+      ctx.spawnFloatingText(projectX(b.laneX, b.y), b.y + 80, `换人打分：${phases[p].name}`, PALETTE.yellow, 17);
+      ctx.sayQuip(p === 1 ? '技术没问题，那我们聊聊业务价值？' : '好，最后我来问一个问题。');
+    }
+  }
+
+  /** 当前评委名（渲染血条用） */
+  get phaseName(): string {
+    const phases = BOSSES[this.boss.id].phases;
+    return phases ? phases[Math.min(this.boss.phase, phases.length - 1)].name : '';
   }
 
   /** 死亡演出：Boss 原地抖动闪白，四处连环爆炸，结束时白屏巨响并结算 */
@@ -390,6 +422,11 @@ export class BossSystem {
         ctx.spawnFloatingText(projectX(b.laneX, b.y), b.y + 70, '冲锋!', PALETTE.red, 16);
         break;
       case 'summon': {
+        // 评审团的业务评委：叫一群抢功同事来抢人
+        if (b.id === 'quarter_judges' && b.phase >= 1) {
+          this.enemies.spawnSwarm('credit_thief', 4, 'FLANK_S', this.minionHpScale);
+          break;
+        }
         const s = BOSSES[b.id].moveSummon;
         this.enemies.spawnSwarm(s.enemyId, s.count, s.formation, this.minionHpScale);
         break;
@@ -420,6 +457,11 @@ export class BossSystem {
       case 'server':
         p.kind = 'fireball';
         p.color = '#FF8A3D';
+        break;
+      case 'judges':
+        // 评审团：飞来的打分卡
+        p.kind = 'slide';
+        p.color = '#FF9EC4';
         break;
       default:
         p.kind = 'coin';

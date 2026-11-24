@@ -5,14 +5,17 @@ import { CODEX_XP } from '../data/codex';
 import { maxOvertime, OVERTIME_BOSS_HP, OVERTIME_ENEMY_HP, OVERTIME_LEVELS } from '../data/overtime';
 import { generateUpgrades, type Loadout } from './UpgradeGenerator';
 import { BOSSES } from '../data/enemies';
-import { getLevel, LEVELS } from '../data/levels';
+import { getLevel, isChapterFinal, LEVELS } from '../data/levels';
 import { PALETTE } from '../data/palette';
 import { computeActiveSynergies, SYNERGIES } from '../data/synergies';
 import { computeTalentEffects, type TalentEffects } from '../data/talents';
 import { AFFIXES, SIDEARM_MAX, WEAPONS, weaponDisplayName } from '../data/weapons';
 import type { AudioEngine } from '../engine/AudioEngine';
 import { ObjectPool } from '../engine/ObjectPool';
-import { clamp, DESIGN_W, PLAYER_Y, projectX } from '../engine/Viewport';
+import { clamp, DESIGN_W, LEADER_MAX_X, PLAYER_Y, projectX, SCROLL_SPEED, TRACK_TOP_Y } from '../engine/Viewport';
+
+/** 分岔隔离带半宽（领队只能在这条线外侧） */
+const FORK_GAP = 26;
 import { SaveManager } from '../storage/SaveManager';
 import { TutorialSystem } from './TutorialSystem';
 import { HordeDirector } from './HordeDirector';
@@ -27,6 +30,7 @@ import { SquadSystem } from './SquadSystem';
 import type { ActiveQuip } from '../data/quips';
 import type {
   AffixId,
+  ForkState,
   GateConfig,
   WeaponId,
   FloatingText,
@@ -82,6 +86,8 @@ export class GameWorld {
   private talentFx: TalentEffects;
   /** 本局出战角色 */
   public char: CharacterConfig = getCharacter('intern');
+  /** 分岔路线（第二章） */
+  public fork: ForkState | null = null;
   /** 「转正答辩」通过蓝门计数 / 「带薪病假」计时 */
   private blueGateCounter = 0;
   private sickLeaveTimer = 0;
@@ -210,7 +216,9 @@ export class GameWorld {
         bossTimeSec: 0,
         damage: { weapon: 0, sidearm: 0, affix: 0, synergy: 0, ult: 0 },
         hitsTaken: 0,
-        maxSidearms: 0
+        maxSidearms: 0,
+        kpiRoads: 0,
+        stolenBack: 0
       }
     };
   }
@@ -275,6 +283,7 @@ export class GameWorld {
     this.contactQuipTimer = 0;
     this.blueGateCounter = 0;
     this.sickLeaveTimer = 0;
+    this.fork = null;
   }
 
   /**
@@ -661,9 +670,38 @@ export class GameWorld {
       this.enemies.step(dt, ctx);
       this.bosses.step(dt, ctx);
       this.horde.step(dt, this);
+      this.stepFork(dt);
     }
 
     this.squad.rebuildRenderUnits(this.state.squadCount);
+  }
+
+  /** 分岔隔离带：随路面滚动；头部到达小队时锁边，尾部过去后解锁；隔离带两侧的怪不会越线 */
+  private stepFork(dt: number): void {
+    const f = this.fork;
+    if (!f) return;
+    f.headY += SCROLL_SPEED * dt;
+    f.tailY += SCROLL_SPEED * dt;
+    if (f.side === 0 && f.headY >= PLAYER_Y - 12) {
+      f.side = this.squad.leaderLaneX < 0 ? -1 : 1;
+      if (f.side < 0) this.squad.setBounds(-LEADER_MAX_X, -FORK_GAP);
+      else this.squad.setBounds(FORK_GAP, LEADER_MAX_X);
+      const kpi = (f.kpiSide === 'LEFT') === f.side < 0;
+      if (kpi) this.state.stats.kpiRoads += 1;
+      this.showBanner(kpi ? '{i:flame} 走上 KPI 路' : '{i:cup} 拐进摸鱼路', kpi ? '怪多精英多，收益也高' : '稳稳当当，收益一般', kpi ? PALETTE.red : PALETTE.mint);
+    }
+    if (f.tailY >= PLAYER_Y + 30) {
+      this.squad.clearBounds();
+      this.fork = null;
+      return;
+    }
+    const list = this.enemies.enemies.activeItems;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.active || e.y > f.headY || e.y < f.tailY) continue;
+      const lim = FORK_GAP - 4 + e.radius * 0.4;
+      if (Math.abs(e.laneX) < lim) e.laneX = (e.laneX < 0 ? -1 : 1) * lim;
+    }
   }
 
   private stepDirector(ctx: CombatContext): void {
@@ -683,6 +721,15 @@ export class GameWorld {
           wave.enemySpawn.hpScale * (this.tutorial.active && wave.timeOffsetSec < 15 ? 0.6 : 1),
           wave.enemySpawn.laneCenter
         );
+      } else if (wave.type === 'FORK' && wave.fork) {
+        // 分岔：隔离带从路的尽头滚下来，抵达小队时锁定所在的一侧
+        this.fork = {
+          headY: TRACK_TOP_Y - 20,
+          tailY: TRACK_TOP_Y - 20 - wave.fork.duration * SCROLL_SPEED,
+          kpiSide: wave.fork.kpiSide,
+          side: 0
+        };
+        this.quips.say(`前方分岔！${wave.fork.kpiSide === 'LEFT' ? '左' : '右'}边 KPI 路怪多但收益高，另一边摸鱼路稳一点`, 'CHAT', 'hype');
       } else if (wave.type === 'BOSS' && wave.bossId) {
         this.state.bossBannerTimer = 2.4;
         this.discover(`b:${wave.bossId}`);
@@ -785,6 +832,25 @@ export class GameWorld {
       sidearms: this.state.sidearms,
       rushTimer: this.state.rushTimer,
       sweepChance: this.char.mods.sweepChance,
+      stealSquad: (n) => {
+        if (this.state.shieldCount > 0) {
+          this.state.shieldCount -= 1;
+          return 0;
+        }
+        const got = Math.max(0, Math.min(n, this.state.squadCount - 1));
+        this.state.squadCount -= got;
+        if (got > 0) {
+          this.state.stats.hitsTaken += 1;
+          this.audio.playGateBad();
+        }
+        return got;
+      },
+      returnSquad: (n) => {
+        this.state.squadCount += n;
+        this.state.stats.stolenBack += n;
+        this.state.stats.maxSquad = Math.max(this.state.stats.maxSquad, this.state.squadCount);
+        this.audio.playGateGood();
+      },
       onSwept: () => {
         if (this.state.affixes.trash_sort > 0) {
           this.state.stats.beansEarned += 2;
@@ -1035,7 +1101,7 @@ export class GameWorld {
 
     // 加班强度：在强度 N 通关周五 → 记下该角色的最高强度（印章），并解锁 N+1
     const ot = this.state.overtime;
-    if (victory && !this.state.isEndless && this.level.day >= LEVELS.length) {
+    if (victory && !this.state.isEndless && isChapterFinal(this.level.day)) {
       const prevMax = maxOvertime(this.save, this.char.id);
       if (ot > (this.save.overtime[this.char.id] || 0)) this.save.overtime[this.char.id] = ot;
       const newMax = maxOvertime(this.save, this.char.id);

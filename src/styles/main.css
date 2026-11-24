@@ -2998,3 +2998,51 @@ button.roster-item:not(:disabled):active {
 .menu-dock .dock-btn span {
   font-size: 12px;
 }
+
+/* ---------- 章节标签 ---------- */
+.chapter-tabs {
+  display: flex;
+  min-width: 0;
+}
+
+.chapter-tabs > * + * {
+  margin-left: 5px;
+}
+
+.chapter-tab {
+  padding: 3px 7px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 900;
+  color: var(--ink);
+  background: #eceae2;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chapter-tab.active {
+  background: var(--yellow);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.chapter-tab:disabled {
+  color: #8a8a8a;
+  cursor: not-allowed;
+}
+
+.chapter-tab .ic {
+  width: 11px;
+  height: 11px;
+  vertical-align: -1px;
+  margin-right: 2px;
+}
+
+.day-picker.six {
+  grid-template-columns: repeat(6, 1fr);
+}
+
+.day-picker.six .day-chip {
+  font-size: 12px;
+}

@@ -13,18 +13,35 @@ export class SquadSystem {
   public footprintTopDy = -16;
   public footprintBottomDy = 14;
 
+  /** 分岔路线时只能在一侧活动 */
+  public minX = -LEADER_MAX_X;
+  public maxX = LEADER_MAX_X;
+
   reset(): void {
     this.leaderLaneX = 0;
     this.targetLaneX = 0;
+    this.clearBounds();
+  }
+
+  setBounds(minX: number, maxX: number): void {
+    this.minX = minX;
+    this.maxX = maxX;
+    this.targetLaneX = clamp(this.targetLaneX, minX, maxX);
+  }
+
+  clearBounds(): void {
+    this.minX = -LEADER_MAX_X;
+    this.maxX = LEADER_MAX_X;
   }
 
   addTargetDelta(deltaLaneX: number): void {
-    this.targetLaneX = clamp(this.targetLaneX + deltaLaneX, -LEADER_MAX_X, LEADER_MAX_X);
+    this.targetLaneX = clamp(this.targetLaneX + deltaLaneX, this.minX, this.maxX);
   }
 
   step(dt: number): void {
     const followAlpha = Math.min(1, 28 * dt);
     this.leaderLaneX += (this.targetLaneX - this.leaderLaneX) * followAlpha;
+    this.leaderLaneX = clamp(this.leaderLaneX, this.minX, this.maxX);
   }
 
   /**

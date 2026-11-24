@@ -16,7 +16,8 @@ const BOSS_SPRITE_KEYS = {
   projector: 'bossProjector',
   hydra: 'bossHydra',
   server: 'bossServer',
-  kpi: 'bossKpi'
+  kpi: 'bossKpi',
+  judges: 'bossJudges'
 } as const;
 
 export class PosterExporter {

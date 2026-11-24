@@ -2,6 +2,7 @@ import type { IconName } from '../ui/icons';
 import type { GameState, SaveData } from '../game/types';
 import { codexProgress } from './codex';
 import { rankForXp, MAX_RANK } from './ranks';
+import { isChapterFinal } from './levels';
 
 export interface BadgeConfig {
   id: string;
@@ -48,20 +49,24 @@ export const BADGES: BadgeConfig[] = [
     desc: '在「周末无尽加班」模式挺进第 3 波以上'
   },
   // ---- v1.0 新增 ----
-  { id: 'coder_friday', icon: 'burst', name: '代码跑通了', desc: '用格子衫程序员通关周五' },
-  { id: 'designer_friday', icon: 'wave', name: '终稿_final_v3', desc: '用改稿设计师通关周五' },
-  { id: 'pm_friday', icon: 'chart', name: '需求已上线', desc: '用画饼产品经理通关周五' },
-  { id: 'sales_friday', icon: 'hongbao', name: '年度销冠', desc: '用拉单销售通关周五' },
-  { id: 'cleaner_friday', icon: 'shades', name: '扫地僧', desc: '用扫地僧保洁阿姨通关周五' },
+  { id: 'coder_friday', icon: 'burst', name: '代码跑通了', desc: '用格子衫程序员通关周五或季度评审' },
+  { id: 'designer_friday', icon: 'wave', name: '终稿_final_v3', desc: '用改稿设计师通关周五或季度评审' },
+  { id: 'pm_friday', icon: 'chart', name: '需求已上线', desc: '用画饼产品经理通关周五或季度评审' },
+  { id: 'sales_friday', icon: 'hongbao', name: '年度销冠', desc: '用拉单销售通关周五或季度评审' },
+  { id: 'cleaner_friday', icon: 'shades', name: '扫地僧', desc: '用扫地僧保洁阿姨通关周五或季度评审' },
   { id: 'cleaner_unlock', icon: 'sparkle', name: '打扫得特别干净', desc: '单局击退 1000 个需求，解锁隐藏同事' },
   { id: 'evolution', icon: 'star', name: '质变', desc: '第一次让主武器进化到 Lv.3' },
   { id: 'full_sidearm', icon: 'magnet', name: '外挂齐活', desc: '同时装满 2 个外挂副武器' },
   { id: 'untouched', icon: 'shield', name: '全身而退', desc: '通关一天，全程没有被撞掉一个人' },
-  { id: 'overtime_3', icon: 'flame', name: '大小周战士', desc: '在加班强度 3 通关周五' },
-  { id: 'overtime_5', icon: 'warning', name: '007 福报', desc: '在加班强度 5 通关周五' },
+  { id: 'overtime_3', icon: 'flame', name: '大小周战士', desc: '在加班强度 3 通关周五或季度评审' },
+  { id: 'overtime_5', icon: 'warning', name: '007 福报', desc: '在加班强度 5 通关周五或季度评审' },
   { id: 'all_gold', icon: 'trophy', name: '卷王之王', desc: '6 位同事全部拿到金章' },
   { id: 'codex_half', icon: 'idcard', name: '职场百科', desc: '打工图鉴收集过半' },
-  { id: 'rank_ceo', icon: 'person', name: '摸鱼 CEO', desc: '职级升到 CEO' }
+  { id: 'rank_ceo', icon: 'person', name: '摸鱼 CEO', desc: '职级升到 CEO' },
+  // ---- 第二章 ----
+  { id: 'quarter_review', icon: 'chart', name: '季度绩效 S', desc: '通关第二章「季度评审会」' },
+  { id: 'kpi_road', icon: 'flame', name: 'KPI 狂人', desc: '一局里至少走两次 KPI 路' },
+  { id: 'thief_buster', icon: 'target', name: '抓内鬼', desc: '一局里从抢功同事手里抢回 8 人以上' }
 ];
 
 export function evaluateNewBadges(state: GameState, save: SaveData, victory: boolean): string[] {
@@ -82,7 +87,11 @@ export function evaluateNewBadges(state: GameState, save: SaveData, victory: boo
   if (state.synergies.length >= 1) grant('synergy_alchemist');
   if (state.isEndless && state.endlessWave >= 3) grant('endless_king');
 
-  const friday = victory && !state.isEndless && state.levelDay >= 5;
+  // 章节最终关（周五 / 季度评审）都算
+  const friday = victory && !state.isEndless && isChapterFinal(state.levelDay);
+  if (victory && !state.isEndless && state.levelDay >= 11) grant('quarter_review');
+  if (state.stats.kpiRoads >= 2) grant('kpi_road');
+  if (state.stats.stolenBack >= 8) grant('thief_buster');
   if (friday && state.character !== 'intern') grant(`${state.character}_friday`);
   if (state.stats.kills >= 1000) grant('cleaner_unlock');
   if (state.weaponLevel >= 3) grant('evolution');

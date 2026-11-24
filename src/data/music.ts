@@ -4,7 +4,7 @@
  *   0 贝斯 + 踩镲 · 1 底鼓 + 军鼓 · 2 琶音 · 3 主旋律
  */
 
-export type ThemeId = 'menu' | 'stage' | 'boss';
+export type ThemeId = 'menu' | 'stage' | 'stage2' | 'boss';
 
 export interface ChordDef {
   /** 贝斯根音（低八度） */
@@ -135,7 +135,42 @@ const MENU: SongDef = {
   bassWave: 'triangle'
 };
 
-export const SONGS: Record<ThemeId, SongDef> = { menu: MENU, stage: STAGE, boss: BOSS };
+/** 第二章「季度冲刺」：和声小调 + E 大三和弦的紧张回旋，更快、贝斯八分音符推进 */
+const STAGE2: SongDef = {
+  bpm: 152,
+  chords: [
+    { bass: 45, tones: [57, 60, 64] },
+    { bass: 50, tones: [57, 62, 65] },
+    { bass: 40, tones: [56, 59, 64] },
+    { bass: 45, tones: [57, 60, 64] },
+    { bass: 41, tones: [57, 60, 65] },
+    { bass: 43, tones: [55, 59, 62] },
+    { bass: 40, tones: [56, 59, 64] },
+    { bass: 40, tones: [56, 59, 62] }
+  ],
+  lead: [
+    [[0, 76, 1], [1, 76, 1], [2, 72, 2], [4, 76, 2], [6, 81, 2], [8, 80, 2], [10, 81, 2], [12, 76, 4]],
+    [[0, 77, 2], [2, 74, 2], [4, 77, 2], [6, 81, 2], [8, 77, 2], [10, 74, 2], [12, 72, 4]],
+    [[0, 71, 2], [2, 74, 2], [4, 76, 2], [6, 80, 2], [8, 83, 3], [11, 80, 1], [12, 76, 4]],
+    [[0, 81, 2], [2, 79, 1], [3, 77, 1], [4, 76, 2], [6, 72, 2], [8, 69, 4], [12, 72, 2], [14, 76, 2]],
+    [[0, 77, 2], [2, 81, 2], [4, 84, 2], [6, 81, 2], [8, 77, 2], [10, 81, 2], [12, 84, 4]],
+    [[0, 83, 2], [2, 79, 2], [4, 74, 2], [6, 79, 2], [8, 83, 2], [10, 86, 2], [12, 83, 4]],
+    [[0, 80, 2], [2, 83, 2], [4, 88, 4], [8, 86, 2], [10, 83, 2], [12, 80, 4]],
+    [[0, 76, 1], [1, 80, 1], [2, 83, 1], [3, 86, 1], [4, 88, 2], [6, 86, 2], [8, 83, 2], [10, 80, 2], [12, 76, 2], [14, 71, 2]]
+  ],
+  bassPattern: [0, 0, 12, 0, 0, 0, 12, 0, 0, 0, 12, 0, 7, 0, 12, 7],
+  arpPattern: [0, 2, 1, 3, 0, 2, 1, 3, 2, 3, 1, 2, 0, 1, 2, 3],
+  arpEvery: 1,
+  kick: 'x...x...x...x.x.',
+  snare: '....x.......x..x',
+  hat: 'x.x.x.x.x.x.x.x.',
+  leadWave: 'square',
+  arpWave: 'sawtooth',
+  bassWave: 'triangle'
+};
+
+export const SONGS: Record<ThemeId, SongDef> = { menu: MENU, stage: STAGE, stage2: STAGE2, boss: BOSS };
 
 /** 每天换个调，五关听起来不重样（半音数） */
-export const DAY_TRANSPOSE = [0, 2, -2, 3, 5];
+/** 第二章 6 关各自的移调 */
+export const DAY_TRANSPOSE = [0, 2, -2, 3, 5, 0, 2, -1, 3, -2, 0];

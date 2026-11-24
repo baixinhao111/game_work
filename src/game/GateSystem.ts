@@ -43,6 +43,8 @@ export function getGateFlipCap(g: Gate): number {
 export function isGateShootable(g: Gate): boolean {
   if (!g.active || g.pairLocked) return false;
   if (g.kind === 'SUPPLY_CRATE') return true;
+  // 限时门：还没超时就可以射击续命
+  if (g.timer > 0 && g.op === '+') return true;
   if (!g.shootableToFlip) return false;
   if (g.flippedToBlue && g.value >= getGateFlipCap(g)) return false;
   return true;
@@ -82,6 +84,8 @@ export class GateSystem {
         linkedPartnerId: undefined,
         overloadDurationSec: 0,
         hitFlashTimer: 0,
+        timer: 0,
+        timedMax: 0,
         bounceScale: 1
       }),
       (g) => {
@@ -131,6 +135,8 @@ export class GateSystem {
       g.rewardWeapon = cfg.rewardWeapon;
       g.rewardAffix = cfg.rewardAffix;
       g.labelOverride = cfg.labelOverride;
+      g.timer = cfg.timedSec ?? 0;
+      g.timedMax = cfg.timedSec ?? 0;
 
       if (cfg.kind === 'SUPPLY_CRATE') {
         g.width = 96;
@@ -153,6 +159,20 @@ export class GateSystem {
 
       g.y += SCROLL_SPEED * dt;
       if (g.hitFlashTimer > 0) g.hitFlashTimer = Math.max(0, g.hitFlashTimer - dt);
+      // 限时门倒计时：归零前没被续上命，蓝门直接变红门
+      if (g.timer > 0 && g.op === '+' && !g.pairLocked) {
+        g.timer -= dt;
+        if (g.timer <= 0) {
+          g.timer = 0;
+          g.op = '-';
+          g.kind = 'SUB';
+          g.shootableToFlip = false;
+          g.labelOverride = '{i:alarm} 超时变红';
+          g.hitFlashTimer = 0.12;
+          g.bounceScale = 1.12;
+          this.audio.playGateBad();
+        }
+      }
       if (g.bounceScale > 1) {
         g.bounceScale = Math.max(1, g.bounceScale - dt * 2.4);
       }
@@ -180,6 +200,13 @@ export class GateSystem {
 
   damageGate(g: Gate, dmg: number, worldX: number, worldY: number, ctx: GateTriggerContext): void {
     if (!g.active || g.pairLocked) return;
+
+    if (g.timer > 0 && g.op === '+') {
+      // 射击续命：每发 +0.06 秒（有上限）
+      g.timer = Math.min(g.timedMax + 2, g.timer + 0.06);
+      g.hitFlashTimer = 0.03;
+      return;
+    }
 
     if (g.kind === 'SUPPLY_CRATE') {
       g.barrelHp -= dmg;

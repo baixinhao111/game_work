@@ -26,7 +26,9 @@ const CORE_SPECS = [
   },
   { key: 'enemyPptGolem', file: 'enemy_ppt_golem.webp', w: 72, h: 72, fallbackColor: PALETTE.yellow },
   { key: 'enemyDdlFlame', file: 'enemy_ddl_flame.webp', w: 52, h: 52, fallbackColor: PALETTE.red },
-  { key: 'propCrate', file: 'prop_crate.webp', w: 72, h: 72, fallbackColor: PALETTE.coffee }
+  { key: 'propCrate', file: 'prop_crate.webp', w: 72, h: 72, fallbackColor: PALETTE.coffee },
+  { key: 'enemyThief', file: 'enemy_thief.webp', w: 46, h: 46, fallbackColor: PALETTE.purple },
+  { key: 'enemyOkr', file: 'enemy_okr.webp', w: 64, h: 64, fallbackColor: PALETTE.mint }
 ] as const;
 
 const BOSS_SPECS = [
@@ -41,7 +43,8 @@ const BOSS_SPECS = [
   },
   { key: 'bossHydra', style: 'hydra', file: 'boss_hydra.webp', w: 156, h: 156, fallbackColor: PALETTE.purple },
   { key: 'bossServer', style: 'server', file: 'boss_server.webp', w: 150, h: 150, fallbackColor: PALETTE.red },
-  { key: 'bossKpi', style: 'kpi', file: 'boss_kpi.webp', w: 166, h: 166, fallbackColor: PALETTE.yellow }
+  { key: 'bossKpi', style: 'kpi', file: 'boss_kpi.webp', w: 166, h: 166, fallbackColor: PALETTE.yellow },
+  { key: 'bossJudges', style: 'judges', file: 'boss_judges.webp', w: 176, h: 176, fallbackColor: PALETTE.red }
 ] as const;
 
 /** v1.0 角色的小队单位（实习生沿用 heroSlacker）；选中后再按需加载 */

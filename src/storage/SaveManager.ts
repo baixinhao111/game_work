@@ -91,7 +91,7 @@ export function parseSave(raw: string, fromV1: boolean): SaveData | null {
         ? parsed.workerCode
         : genWorkerCode();
 
-    const highestCleared = fromV1 ? (totalClears > 0 ? 1 : 0) : safeInt(parsed.highestCleared, 0, 5);
+    const highestCleared = fromV1 ? (totalClears > 0 ? 1 : 0) : safeInt(parsed.highestCleared, 0, 11);
     const endlessBestWave = safeInt(parsed.endlessBestWave, 0, 999);
     const oldVersion = safeInt(parsed.version, 0, 99);
     // v3 及更早的存档没有经验：按历史进度一次性折算，老玩家直接解锁几个角色

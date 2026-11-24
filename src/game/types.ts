@@ -60,7 +60,10 @@ export type EnemyId =
   | 'client_mini'
   | 'ppt_pie'
   | 'ddl_flame'
-  | 'unread_dot';
+  | 'unread_dot'
+  // 第二章
+  | 'credit_thief'
+  | 'okr_repeater';
 
 /**
  * 敌人移动行为：
@@ -70,11 +73,12 @@ export type EnemyId =
  * - heavy：重装匀速碾压，几乎不转向
  * - snake：先 S 型蛇皮走位，进入近场后锁定小队冲刺
  */
-export type EnemyBehavior = 'shamble' | 'march' | 'homing' | 'heavy' | 'snake';
+/** - thief：抢功同事，冲到小队身边抢走几个人后往回逃（逃走前打死能抢回来） */
+export type EnemyBehavior = 'shamble' | 'march' | 'homing' | 'heavy' | 'snake' | 'thief';
 
-export type BossId = 'monday_alarm' | 'meeting_projector' | 'client_hydra' | 'p0_lava' | 'kpi_titan';
+export type BossId = 'monday_alarm' | 'meeting_projector' | 'client_hydra' | 'p0_lava' | 'kpi_titan' | 'quarter_judges';
 
-export type BossStyle = 'alarm' | 'projector' | 'hydra' | 'server' | 'kpi';
+export type BossStyle = 'alarm' | 'projector' | 'hydra' | 'server' | 'kpi' | 'judges';
 
 export type BossMove =
   | 'ring_gap'
@@ -180,6 +184,8 @@ export interface BossConfig {
   shieldSummon: BossSummon;
   /** summon 招式使用的召唤配置 */
   moveSummon: BossSummon;
+  /** 多评委轮流出招：血量降到 at 以下换成这一组招式（评审团） */
+  phases?: { at: number; name: string; moves: BossMove[] }[];
 }
 
 export interface GateConfig {
@@ -198,13 +204,17 @@ export interface GateConfig {
   rewardWeapon?: WeaponId;
   rewardAffix?: AffixId;
   labelOverride?: string;
+  /** 限时门：倒计时秒数，归零变红门；射它可以续时间 */
+  timedSec?: number;
 }
 
 export type EnemyFormation = 'LINE' | 'CLUSTER' | 'FLANK_S' | 'STAGGERED_HORDE' | 'COLUMN' | 'WEDGE';
 
 export interface LevelWaveConfig {
   timeOffsetSec: number;
-  type: 'GATE_PAIR' | 'ENEMY_SWARM' | 'BARREL' | 'BOSS';
+  type: 'GATE_PAIR' | 'ENEMY_SWARM' | 'BARREL' | 'BOSS' | 'FORK';
+  /** 分岔路线：持续秒数、KPI 路在哪边 */
+  fork?: { duration: number; kpiSide: 'LEFT' | 'RIGHT' };
   gates?: GateConfig[];
   enemySpawn?: {
     enemyId: EnemyId;
@@ -218,6 +228,10 @@ export interface LevelWaveConfig {
 
 export interface LevelConfig {
   day: number;
+  /** 所属章节 1 / 2 */
+  chapter: number;
+  /** 选关按钮上的短名（周一 → 一） */
+  short: string;
   weekday: string;
   title: string;
   subtitle: string;
@@ -286,6 +300,13 @@ export interface Enemy extends Poolable {
   flankAmp: number;
   splitsOnDeath: number;
   rot: number;
+  /** 抢功同事：抢走的人数 / 正在逃跑 */
+  stolen: number;
+  fleeing: boolean;
+  /** OKR 复读机：正面护盾（先吃伤害，定时回满） */
+  shieldHp: number;
+  shieldMax: number;
+  shieldRegen: number;
 }
 
 export interface Gate extends Poolable {
@@ -318,6 +339,9 @@ export interface Gate extends Poolable {
   labelOverride?: string;
   hitFlashTimer: number;
   bounceScale: number;
+  /** 限时门剩余秒数（0 = 不是限时门 / 已超时） */
+  timer: number;
+  timedMax: number;
 }
 
 /** Boss 弹幕造型：每个 Boss 一种，避免和红色炮灰混淆 */
@@ -421,6 +445,16 @@ export interface BossRuntime {
   dying: number;
   /** 是否已经落地（用于登场震屏） */
   landed: boolean;
+  /** 多阶段 Boss 当前阶段（评审团换评委） */
+  phase: number;
+}
+
+/** 分岔路线：隔离带头尾（屏幕 y）、KPI 路在哪边、小队选了哪边（0 = 还没选） */
+export interface ForkState {
+  headY: number;
+  tailY: number;
+  kpiSide: 'LEFT' | 'RIGHT';
+  side: -1 | 0 | 1;
 }
 
 export interface SquadUnitRender {
@@ -520,6 +554,9 @@ export interface GameState {
     hitsTaken: number;
     /** 同时装备的外挂数量峰值 */
     maxSidearms: number;
+    /** 第二章：走过几次 KPI 路 / 从抢功同事手里抢回的人数 */
+    kpiRoads: number;
+    stolenBack: number;
   };
 }
 

@@ -27,7 +27,8 @@ const BOSS_ACCENT = {
   projector: '#7FF7FF',
   hydra: '#C77DFF',
   server: '#FF8A3D',
-  kpi: '#FFC93C'
+  kpi: '#FFC93C',
+  judges: '#FF9EC4'
 } as const;
 
 const BOSS_SPRITES = {
@@ -35,7 +36,8 @@ const BOSS_SPRITES = {
   projector: 'bossProjector',
   hydra: 'bossHydra',
   server: 'bossServer',
-  kpi: 'bossKpi'
+  kpi: 'bossKpi',
+  judges: 'bossJudges'
 } as const;
 
 /** RGB 光轴风暴的跑马灯配色 */
@@ -67,6 +69,7 @@ export class Renderer {
 
     this.drawLayer0Track(ctx, world);
     this.drawLayer1GroundHints(ctx, world);
+    this.drawFork(ctx, world);
     this.drawLayer2Gates(ctx, world);
     this.drawLayer3EnemiesAndBoss(ctx, world);
     this.drawDeathPops(ctx, world);
@@ -607,6 +610,74 @@ export class Renderer {
     }
   }
 
+  /** 第二章分岔路线：路中间的黄黑隔离带 + 头部的两块路牌 */
+  private drawFork(ctx: CanvasRenderingContext2D, world: GameWorld): void {
+    const f = world.fork;
+    if (!f) return;
+    const y0 = Math.max(TRACK_TOP_Y, f.tailY);
+    const y1 = Math.min(TRACK_BOTTOM_Y, f.headY);
+    if (y1 > y0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(projectX(-16, y0), y0);
+      ctx.lineTo(projectX(16, y0), y0);
+      ctx.lineTo(projectX(16, y1), y1);
+      ctx.lineTo(projectX(-16, y1), y1);
+      ctx.closePath();
+      ctx.fillStyle = PALETTE.ink;
+      ctx.fill();
+      ctx.clip();
+      ctx.fillStyle = PALETTE.yellow;
+      for (let y = y0 - 40 + (((world.state.elapsedSec * SCROLL_SPEED) % 28) + 28) % 28; y < y1 + 40; y += 28) {
+        ctx.beginPath();
+        ctx.moveTo(-200 + DESIGN_W / 2, y);
+        ctx.lineTo(200 + DESIGN_W / 2, y + 60);
+        ctx.lineTo(200 + DESIGN_W / 2, y + 74);
+        ctx.lineTo(-200 + DESIGN_W / 2, y + 14);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(projectX(-16, y0), y0);
+      ctx.lineTo(projectX(-16, y1), y1);
+      ctx.moveTo(projectX(16, y0), y0);
+      ctx.lineTo(projectX(16, y1), y1);
+      ctx.stroke();
+    }
+    // 路牌：只在隔离带头部还没到小队时显示
+    if (f.side === 0 && f.headY > TRACK_TOP_Y - 10 && f.headY < PLAYER_Y) {
+      const sy = Math.max(TRACK_TOP_Y + 26, f.headY - 22);
+      const s = depthScale(sy);
+      for (const side of [-1, 1] as const) {
+        const kpi = (f.kpiSide === 'LEFT') === side < 0;
+        const sx = projectX(side * 74, sy);
+        const w = 104 * s;
+        const h = 40 * s;
+        ctx.fillStyle = PALETTE.ink;
+        ctx.beginPath();
+        ctx.roundRect(sx - w / 2 + 3, sy - h / 2 + 3, w, h, 8);
+        ctx.fill();
+        ctx.fillStyle = kpi ? PALETTE.red : PALETTE.mint;
+        ctx.strokeStyle = PALETTE.ink;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.roundRect(sx - w / 2, sy - h / 2, w, h, 8);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = kpi ? PALETTE.paper : PALETTE.ink;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `900 ${Math.round(15 * s)}px sans-serif`;
+        ctx.fillText(kpi ? 'KPI 路' : '摸鱼路', sx, sy - 6 * s);
+        ctx.font = `800 ${Math.round(10 * s)}px sans-serif`;
+        ctx.fillText(kpi ? '怪多 · 收益高' : '稳 · 收益低', sx, sy + 10 * s);
+      }
+    }
+  }
+
   /** 色弱模式纹理：坏门 = 粗交叉斜纹，好门 = 波点（在门体裁剪区域内绘制） */
   private drawColorblindPattern(
     ctx: CanvasRenderingContext2D,
@@ -703,6 +774,12 @@ export class Renderer {
       }
     } else if (g.moveSpeedX !== 0) {
       tagText = '滑轨门';
+    }
+    if (g.timer > 0 && g.op === '+') {
+      // 限时门：倒计时 + 射击续命提示
+      mainColor = g.timer < 1 ? PALETTE.red : PALETTE.yellow;
+      fillColor = 'rgba(255, 230, 0, 0.18)';
+      tagText = `{i:alarm} 限时 ${g.timer.toFixed(1)}s · 射它续命`;
     }
 
     // 投影底座光影：实心靶门厚重，光幕门轻盈
@@ -964,6 +1041,42 @@ export class Renderer {
         ctx.stroke();
       }
       ctx.restore();
+
+      // OKR 复读机：身前一面薄荷色六边形护盾，厚度随护盾值变化
+      if (e.shieldHp > 0) {
+        const k = e.shieldHp / Math.max(1, e.shieldMax);
+        const r = e.radius * depthScale(e.y) + 10;
+        ctx.save();
+        ctx.translate(sx, e.y + 6);
+        ctx.globalAlpha = 0.35 + 0.5 * k;
+        ctx.strokeStyle = PALETTE.ink;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, Math.PI * 0.15, Math.PI * 0.85);
+        ctx.stroke();
+        ctx.strokeStyle = PALETTE.mint;
+        ctx.lineWidth = 2 + 3 * k;
+        ctx.stroke();
+        ctx.restore();
+      }
+      // 抢功同事：抱着抢来的人逃跑，头顶标出人数提醒玩家追杀
+      if (e.fleeing && e.stolen > 0) {
+        const ty = e.y - sp.logicalH * 0.5 * depthScale(e.y) - 10;
+        ctx.save();
+        ctx.fillStyle = PALETTE.red;
+        ctx.strokeStyle = PALETTE.ink;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.roundRect(sx - 22, ty - 11, 44, 20, 8);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = PALETTE.paper;
+        ctx.font = '900 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`偷${e.stolen}人`, sx, ty);
+        ctx.restore();
+      }
 
       if (e.configId === 'ppt_pie' || e.configId === 'client_tweak') {
         const bw = 38 * depthScale(e.y);
@@ -1718,6 +1831,10 @@ export class Renderer {
         return this.sprites.get('enemyDdlFlame');
       case 'unread_dot':
         return this.sprites.get('enemyUnread');
+      case 'credit_thief':
+        return this.sprites.get('enemyThief');
+      case 'okr_repeater':
+        return this.sprites.get('enemyOkr');
       default:
         return this.sprites.get('enemyZombie');
     }
@@ -2170,7 +2287,8 @@ export class Renderer {
       ctx.font = '900 11px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const hpText = `${boss.name}  ${Math.round((boss.hp / boss.maxHp) * 100)}%${boss.enraged ? ' · 红温' : ''}`;
+      const judge = world.bosses.phaseName;
+      const hpText = `${boss.name}${judge ? ` · ${judge}` : ''}  ${Math.round((boss.hp / boss.maxHp) * 100)}%${boss.enraged ? ' · 红温' : ''}`;
       ctx.strokeText(hpText, DESIGN_W * 0.5, by + 8);
       ctx.fillText(hpText, DESIGN_W * 0.5, by + 8);
 
