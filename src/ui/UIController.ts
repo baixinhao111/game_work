@@ -100,6 +100,17 @@ export class UIController {
   private readonly ultLabel = document.getElementById('ult-label')!;
 
   private readonly quipBanner = document.getElementById('quip-banner')!;
+  private readonly dockMsg = document.getElementById('dock-msg')!;
+  private readonly dsSquad = document.getElementById('ds-squad')!;
+  private readonly dsKills = document.getElementById('ds-kills')!;
+  private readonly dsCombo = document.getElementById('ds-combo')!;
+  private readonly dsOverload = document.getElementById('ds-overload')!;
+  private readonly dockPickupBar = document.getElementById('dock-pickup-bar')!;
+  private readonly dockPickupTitle = document.getElementById('dock-pickup-title')!;
+  private readonly dockPickupSub = document.getElementById('dock-pickup-sub')!;
+  /** 当前显示中的工作群消息（QuipSystem 到期时传 null） */
+  private chatActive = false;
+  private lastPickupKey = '';
   private readonly quipAvatarIcon = document.getElementById('quip-avatar-icon')!;
   private readonly quipSender = document.getElementById('quip-sender')!;
   private readonly quipTag = document.getElementById('quip-tag')!;
@@ -587,6 +598,8 @@ export class UIController {
       this.hudClock.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
     }
 
+    this.syncDock(state);
+
     const pct = Math.floor(state.ultCharge);
     this.ultFill.style.width = `${pct}%`;
     if (pct >= 100) {
@@ -601,19 +614,45 @@ export class UIController {
   }
 
   setQuip(quip: ActiveQuip | null): void {
-    if (!quip) {
-      this.quipBanner.classList.add('hidden');
-      this.quipBanner.classList.remove('pop-in');
-      return;
-    }
+    this.chatActive = !!quip;
+    if (!quip) return;
     this.quipAvatarIcon.innerHTML = iconSvg(quip.icon ?? 'chat');
     this.quipSender.textContent = quip.sender ?? '摸鱼战神群';
     this.quipTag.textContent = quip.tag ?? '@你';
     this.quipText.textContent = quip.text;
     this.quipBanner.dataset.tone = quip.tone;
-    this.quipBanner.classList.remove('hidden', 'pop-in');
-    void this.quipBanner.offsetWidth;
-    this.quipBanner.classList.add('pop-in');
+  }
+
+  /** 底部操作坞消息槽：拾取横幅 > 工作群消息 > 实时战况，同一时间只显示一种 */
+  private syncDock(state: GameState): void {
+    const bn = state.banner;
+    const mode = bn ? 'pickup' : this.chatActive ? 'chat' : 'stats';
+    if (this.dockMsg.dataset.mode !== mode) this.dockMsg.dataset.mode = mode;
+    if (bn) {
+      const key = bn.title + '|' + bn.sub;
+      if (key !== this.lastPickupKey) {
+        this.lastPickupKey = key;
+        this.dockPickupTitle.innerHTML = richHtml(bn.title);
+        this.dockPickupSub.textContent = bn.sub;
+        this.dockPickupBar.style.background = bn.color;
+      }
+    } else {
+      this.lastPickupKey = '';
+    }
+    if (mode !== 'stats') return;
+    setRich(this.dsSquad, `{i:squad} ${state.squadCount}`);
+    setRich(this.dsKills, `{i:target} ${state.stats.kills}`);
+    const combo = state.comboCount;
+    this.dsCombo.classList.toggle('hidden', combo < 5);
+    if (combo >= 5) {
+      setRich(this.dsCombo, `{i:flame} ${combo} 连杀`);
+      this.dsCombo.classList.toggle('hot', combo >= 30);
+    }
+    const ov = state.overloadEnemyTimer;
+    this.dsOverload.classList.toggle('hidden', ov <= 0);
+    // 连杀和过载同时出现时，击杀数让位，避免挤出槽位
+    this.dsKills.classList.toggle('hidden', ov > 0 && combo >= 5);
+    if (ov > 0) setRich(this.dsOverload, `{i:bolt} 过载 ${ov.toFixed(1)}s`);
   }
 
   updateDebug(info: string): void {

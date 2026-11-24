@@ -1456,38 +1456,6 @@ body {
   50% { transform: scale(1.06); }
 }
 
-/* ---------- 工作群消息：底部左侧，与大招按钮并排，不遮挡怪物进场区 ---------- */
-.hud-bottom {
-  align-items: flex-end;
-}
-.hud-bottom .quip-chat {
-  margin: 0 8px 0 0;
-  margin-right: auto;
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: calc(100% - 156px);
-  padding: 5px 8px;
-}
-.hud-bottom .quip-chat-avatar {
-  width: 26px;
-  height: 26px;
-}
-.hud-bottom .quip-chat-meta {
-  font-size: 10px;
-}
-.hud-bottom .quip-chat-time {
-  display: none;
-}
-.hud-bottom .quip-chat-text {
-  font-size: 11.5px;
-  line-height: 1.3;
-  white-space: normal;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
 /* =====================================================================
  * v1.0 界面：全屏主菜单 · 工牌职级 · 结算绩效 / 复盘 · 设置 · 名册 · 升职
  * 间距统一用 margin（Chrome 61 不支持 flex gap）
@@ -2561,5 +2529,193 @@ body {
   }
   .menu-scroll > * + * {
     margin-top: 9px;
+  }
+}
+
+/* ---------- 局内底部操作坞：消息槽 + 大招按钮 ---------- */
+.hud-bottom {
+  margin-top: auto;
+  display: flex;
+  align-items: stretch;
+  height: 52px;
+}
+
+.dock-msg {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-right: 10px;
+}
+
+/* 三种内容叠在同一个槽位里，按 data-mode 只显示一种 */
+.dock-msg > * {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.22, 1.3, 0.36, 1), visibility 0s linear 0.16s;
+}
+
+.dock-msg[data-mode='stats'] .dock-stats,
+.dock-msg[data-mode='pickup'] .dock-pickup,
+.dock-msg[data-mode='chat'] .quip-chat {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.22, 1.3, 0.36, 1), visibility 0s;
+}
+
+/* 实时战况：半透明深色条，不抢画面 */
+.dock-stats {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: rgba(15, 17, 26, 0.62);
+  border: 2px solid rgba(248, 247, 242, 0.16);
+  border-radius: 14px;
+  color: var(--paper);
+  font-size: 14px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.dock-stats > * + * {
+  margin-left: 10px;
+}
+
+.ds-item .ic {
+  width: 17px;
+  height: 17px;
+  vertical-align: -3px;
+}
+
+.ds-pill {
+  padding: 3px 8px;
+  border: 2px solid var(--ink);
+  border-radius: 9px;
+  background: var(--yellow);
+  color: var(--ink);
+  font-size: 12px;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.ds-pill.hot {
+  background: var(--red);
+  color: var(--paper);
+}
+
+.ds-pill.warn {
+  background: var(--purple);
+  color: var(--yellow);
+}
+
+.ds-pill .ic {
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+}
+
+/* 拾取：武器 / 词条 / 化学反应 */
+.dock-pickup {
+  display: flex;
+  align-items: stretch;
+  background: var(--paper);
+  color: var(--ink);
+  border: 2.5px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 3px 3px 0 var(--ink);
+  overflow: hidden;
+}
+
+.dock-pickup-bar {
+  flex-shrink: 0;
+  width: 10px;
+  border-right: 2.5px solid var(--ink);
+  background: var(--yellow);
+}
+
+.dock-pickup-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 10px;
+}
+
+.dock-pickup-title {
+  font-size: 15px;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dock-pickup-title .ic {
+  width: 17px;
+  height: 17px;
+  vertical-align: -3px;
+}
+
+.dock-pickup-sub {
+  margin-top: 1px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #4a4f66;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 工作群消息 */
+.dock-msg .quip-chat {
+  margin: 0;
+  width: auto;
+  max-width: none;
+  padding: 5px 9px;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.dock-msg .quip-chat-avatar {
+  width: 28px;
+  height: 28px;
+}
+
+.dock-msg .quip-chat-text {
+  font-size: 11.5px;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 大招按钮：与消息槽同高 */
+.hud-bottom .ult-btn {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: 128px;
+  height: 100%;
+  padding: 0 8px;
+  border-radius: 14px;
+}
+
+.hud-bottom .ult-label {
+  display: block;
+  line-height: 1.15;
+}
+
+@media (max-width: 360px) {
+  .hud-bottom .ult-btn {
+    width: 112px;
+  }
+  .dock-stats {
+    font-size: 13px;
   }
 }

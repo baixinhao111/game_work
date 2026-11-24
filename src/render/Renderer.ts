@@ -2071,49 +2071,7 @@ export class Renderer {
       }
     }
 
-    // 底部状态带（小队脚下）：高压过载计时 / 连杀；拾取横幅出现时让位
-    const statusY = 742;
-    const bannerOn = !!state.banner;
-    if (state.phase === 'PLAYING' && state.overloadEnemyTimer > 0 && !bannerOn) {
-      this.drawSticker(
-        ctx,
-        100,
-        statusY,
-        `{i:bolt} 高压过载 · 怪物狂飙 ${state.overloadEnemyTimer.toFixed(1)}s`,
-        PALETTE.purple,
-        PALETTE.yellow,
-        11
-      );
-    }
-
-    // 实时连杀贴纸徽章（放在顶部工作群通知与 Boss 血条下方，避免遮挡）
-    if (state.phase === 'PLAYING' && state.comboCount >= 5 && !bannerOn) {
-      const pop = 1 + Math.min(0.15, (state.comboTimer / 2.4) * 0.12);
-      ctx.save();
-      ctx.translate(DESIGN_W - 62, statusY);
-      ctx.rotate(0.06);
-      ctx.scale(pop, pop);
-
-      ctx.fillStyle = PALETTE.ink;
-      ctx.beginPath();
-      ctx.roundRect(-48 + 3, -15 + 3, 96, 30, 8);
-      ctx.fill();
-
-      ctx.fillStyle = state.comboCount >= 30 ? PALETTE.red : PALETTE.yellow;
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.roundRect(-48, -15, 96, 30, 8);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = state.comboCount >= 30 ? PALETTE.paper : PALETTE.ink;
-      ctx.font = '900 13px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      drawRichText(ctx, `{i:flame} ${state.comboCount} 连杀!`, 0, 0.5);
-      ctx.restore();
-    }
+    // 拾取横幅 / 连杀 / 高压过载计时已移到 DOM 底部操作坞（UIController.syncDock），不再画在小队脚下
 
     // 顶部 Boss 血条
     const boss = world.bosses.boss;
@@ -2169,43 +2127,6 @@ export class Renderer {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       drawRichText(ctx, world.bossBannerText, 0, 0);
-      ctx.restore();
-    }
-
-    // 拿到武器 / 词条：居中贴纸横幅，取代容易被弹幕淹没的小飘字
-    if (state.banner) {
-      const bn = state.banner;
-      const age = 1.9 - bn.timer;
-      const inT = Math.min(1, age / 0.18);
-      const outA = bn.timer < 0.3 ? bn.timer / 0.3 : 1;
-      const scale = 0.6 + 0.4 * (1 - Math.pow(1 - inT, 3)) + (inT < 1 ? 0 : 0);
-      ctx.save();
-      ctx.globalAlpha = outA;
-      ctx.translate(DESIGN_W * 0.5, 734);
-      ctx.rotate(-0.02);
-      ctx.scale(scale, scale);
-      ctx.fillStyle = PALETTE.ink;
-      ctx.beginPath();
-      ctx.roundRect(-150 + 5, -34 + 5, 300, 68, 12);
-      ctx.fill();
-      ctx.fillStyle = PALETTE.paper;
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.roundRect(-150, -34, 300, 68, 12);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = bn.color;
-      ctx.fillRect(-150, -34, 12, 68);
-      ctx.strokeRect(-150, -34, 12, 68);
-      ctx.fillStyle = PALETTE.ink;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.font = '900 19px sans-serif';
-      drawRichText(ctx, bn.title, 6, -11, { maxWidth: 270 });
-      ctx.fillStyle = '#4A4F66';
-      ctx.font = '800 12px sans-serif';
-      ctx.fillText(bn.sub, 6, 15, 270);
       ctx.restore();
     }
 

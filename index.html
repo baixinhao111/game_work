@@ -40,27 +40,40 @@
           <span class="progress-time" id="hud-clock">09:00</span>
         </div>
 
-        <!-- 右下角大招打卡按钮 -->
+        <!-- 底部操作坞：左侧消息槽（拾取 > 工作群 > 实时战况，同一时间只显示一种）+ 右侧大招按钮，互不遮挡 -->
         <div class="hud-bottom">
-          <!-- 工作群消息：放在底部左侧，不遮挡怪物进场区域 -->
-          <div class="quip-chat hidden" id="quip-banner" data-tone="sass" role="status" aria-live="polite">
-            <div class="quip-chat-avatar" id="quip-avatar">
-              <span id="quip-avatar-icon"><i data-ic="chat"></i></span>
-              <i class="quip-unread-dot" aria-hidden="true"></i>
+          <div class="dock-msg" id="dock-msg" data-mode="stats">
+            <div class="dock-stats" id="dock-stats">
+              <span class="ds-item" id="ds-squad"><i data-ic="squad"></i> 4</span>
+              <span class="ds-item" id="ds-kills"><i data-ic="target"></i> 0</span>
+              <span class="ds-pill hidden" id="ds-combo"></span>
+              <span class="ds-pill warn hidden" id="ds-overload"></span>
             </div>
-            <div class="quip-chat-body">
-              <div class="quip-chat-meta">
-                <span class="quip-chat-sender" id="quip-sender">摸鱼战神群 (99+)</span>
-                <span class="quip-chat-tag" id="quip-tag">@你</span>
-                <span class="quip-chat-time">刚刚</span>
+            <div class="dock-pickup" id="dock-pickup">
+              <span class="dock-pickup-bar" id="dock-pickup-bar"></span>
+              <span class="dock-pickup-body">
+                <b class="dock-pickup-title" id="dock-pickup-title"></b>
+                <small class="dock-pickup-sub" id="dock-pickup-sub"></small>
+              </span>
+            </div>
+            <div class="quip-chat" id="quip-banner" data-tone="sass" role="status" aria-live="polite">
+              <div class="quip-chat-avatar" id="quip-avatar">
+                <span id="quip-avatar-icon"><i data-ic="chat"></i></span>
+                <i class="quip-unread-dot" aria-hidden="true"></i>
               </div>
-              <div class="quip-chat-text" id="quip-text"></div>
+              <div class="quip-chat-body">
+                <div class="quip-chat-meta">
+                  <span class="quip-chat-sender" id="quip-sender">摸鱼战神群 (99+)</span>
+                  <span class="quip-chat-tag" id="quip-tag">@你</span>
+                </div>
+                <div class="quip-chat-text" id="quip-text"></div>
+              </div>
             </div>
           </div>
 
           <button type="button" class="ult-btn" id="btn-ult" disabled>
             <span class="ult-fill" id="ult-fill"></span>
-            <span class="ult-label" id="ult-label">18:00 下班 0%</span>
+            <span class="ult-label" id="ult-label">下班蓄力 0%</span>
           </button>
         </div>
       </div>
