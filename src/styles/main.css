@@ -2719,3 +2719,48 @@ body {
     font-size: 13px;
   }
 }
+
+/* ---------- 同事名册：可点击上岗 ---------- */
+button.roster-item {
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+button.roster-item:disabled {
+  cursor: default;
+}
+
+button.roster-item:not(:disabled):active {
+  transform: translate(2px, 2px);
+}
+
+.roster-item .roster-detail {
+  margin-top: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #3f445c;
+  text-align: left;
+}
+
+.roster-item .roster-detail b {
+  display: inline;
+  margin: 0 3px 0 0;
+  font-size: 10px;
+  color: var(--purple);
+}
+
+.roster-item.current .roster-state {
+  background: var(--yellow);
+}
+
+/* 三选一：专属词条 / 主武器进化卡高亮 */
+.upgrade-card.is-exclusive {
+  background: #fff3b0;
+}
+
+.upgrade-card.is-main {
+  border-color: var(--ink);
+  box-shadow: 4px 4px 0 var(--purple);
+}

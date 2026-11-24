@@ -190,6 +190,11 @@ function bootstrap(): void {
         world.applySettings(true);
         applyQuality();
       },
+      onSelectCharacter: (id) => {
+        world.save.selectedCharacter = id;
+        void SaveManager.save(world.save);
+        audio.playGateGood();
+      },
       onReplayTutorial: () => {
         input.resetState();
         world.replayTutorial();

@@ -1,11 +1,13 @@
 import { evaluateNewBadges } from '../data/badges';
 import { applyRunXp, computeRunXp } from '../data/ranks';
+import { getCharacter, isCharacterUnlocked, type CharacterConfig } from '../data/characters';
+import { generateUpgrades, type Loadout } from './UpgradeGenerator';
 import { BOSSES } from '../data/enemies';
 import { getLevel, LEVELS } from '../data/levels';
 import { PALETTE } from '../data/palette';
 import { computeActiveSynergies, SYNERGIES } from '../data/synergies';
 import { computeTalentEffects, type TalentEffects } from '../data/talents';
-import { AFFIXES, WEAPONS } from '../data/weapons';
+import { AFFIXES, SIDEARM_MAX, WEAPONS, weaponDisplayName } from '../data/weapons';
 import type { AudioEngine } from '../engine/AudioEngine';
 import { ObjectPool } from '../engine/ObjectPool';
 import { clamp, DESIGN_W, PLAYER_Y, projectX } from '../engine/Viewport';
@@ -22,6 +24,8 @@ import { QuipSystem } from './QuipSystem';
 import { SquadSystem } from './SquadSystem';
 import type { ActiveQuip } from '../data/quips';
 import type {
+  AffixId,
+  WeaponId,
   FloatingText,
   GamePhase,
   GameState,
@@ -71,6 +75,11 @@ export class GameWorld {
   public level: LevelConfig = LEVELS[0];
   private activeTimeline: LevelWaveConfig[] = LEVELS[0].timeline;
   private talentFx: TalentEffects;
+  /** 本局出战角色 */
+  public char: CharacterConfig = getCharacter('intern');
+  /** 「转正答辩」通过蓝门计数 / 「带薪病假」计时 */
+  private blueGateCounter = 0;
+  private sickLeaveTimer = 0;
 
   constructor(
     public readonly audio: AudioEngine,
@@ -139,7 +148,10 @@ export class GameWorld {
   }
 
   private createInitialState(phase: GamePhase, isEndless: boolean): GameState {
-    const startSquad = 4 + this.talentFx.startSquadBonus;
+    const m = this.char.mods;
+    const startSquad = Math.max(1, 4 + this.talentFx.startSquadBonus + m.startSquad);
+    const affixes = {} as Record<AffixId, number>;
+    for (const k of Object.keys(AFFIXES) as AffixId[]) affixes[k] = 0;
     return {
       phase,
       levelDay: isEndless ? 1 : this.level.day,
@@ -149,21 +161,18 @@ export class GameWorld {
       elapsedSec: 0,
       trackDurationSec: isEndless ? ENDLESS_WAVE_DURATION_SEC : this.level.durationSec,
       squadCount: startSquad,
-      shieldCount: clamp(1 + this.talentFx.startShieldBonus, 0, 5),
+      shieldCount: clamp(1 + this.talentFx.startShieldBonus + m.startShield, 0, 5),
       ultCharge: 0,
       ultActiveTimer: 0,
       ultStampTimer: 0,
-      activeWeapon: 'stapler',
-      affixes: {
-        split: 0,
-        ricochet: 0,
-        pierce: 0,
-        chill: 0,
-        chain_lightning: 0,
-        crit_rage: 0,
-        kill_haste: 0,
-        vamp_shield: 0
-      },
+      activeWeapon: this.char.weapon,
+      character: this.char.id,
+      weaponLevel: 1,
+      sidearms: [],
+      freezeTimer: 0,
+      rushTimer: 0,
+      gateBoostCharges: 0,
+      affixes,
       synergies: [],
       pendingUpgrades: [],
       upgradeSource: 'ENDLESS_BOSS',
@@ -191,7 +200,7 @@ export class GameWorld {
         beansEarned: 0,
         maxCritDamage: 0,
         bossTimeSec: 0,
-        damage: { weapon: 0, affix: 0, synergy: 0, ult: 0 }
+        damage: { weapon: 0, sidearm: 0, affix: 0, synergy: 0, ult: 0 }
       }
     };
   }
@@ -253,6 +262,20 @@ export class GameWorld {
     this.killSpreeCount = 0;
     this.killSpreeTimer = 0;
     this.contactQuipTimer = 0;
+    this.blueGateCounter = 0;
+    this.sickLeaveTimer = 0;
+  }
+
+  /** 开局前确定出战角色：没解锁的回退到实习生；新手引导局固定用实习生 */
+  private pickCharacter(tutorial = false): void {
+    const want = getCharacter(this.save.selectedCharacter);
+    this.char = !tutorial && isCharacterUnlocked(want, this.save) ? want : getCharacter('intern');
+  }
+
+  /** 当前构筑（生成三选一用） */
+  get loadout(): Loadout {
+    const st = this.state;
+    return { character: st.character, activeWeapon: st.activeWeapon, weaponLevel: st.weaponLevel, sidearms: st.sidearms, affixes: st.affixes };
   }
 
   startNewRun(day = this.selectedDay, opts: { tutorial?: boolean } = {}): void {
@@ -261,6 +284,7 @@ export class GameWorld {
     this.activeTimeline = this.level.timeline;
     this.refreshTalents();
     this.resetWorldSubsystems();
+    this.pickCharacter(opts.tutorial);
 
     this.state = this.createInitialState('PLAYING', false);
     if (opts.tutorial) {
@@ -280,6 +304,7 @@ export class GameWorld {
     this.tutorial.stop();
     this.refreshTalents();
     this.resetWorldSubsystems();
+    this.pickCharacter();
     this.activeTimeline = EndlessDirector.generateWaveTimeline(1);
     this.state = this.createInitialState('PLAYING', true);
     this.uiCallbacks.onEnsureBoss?.({ bossId: EndlessDirector.getBossForWave(1) });
@@ -295,21 +320,16 @@ export class GameWorld {
     if (!opt) return;
 
     this.state.pendingUpgrades = [];
-    if (opt.kind === 'WEAPON' && opt.weaponId && opt.affixId) {
-      // 补给箱组合牌：换武器 + 词条
-      this.state.activeWeapon = opt.weaponId;
-      this.state.affixes[opt.affixId] = (this.state.affixes[opt.affixId] || 0) + 1;
-      const w = WEAPONS[opt.weaponId];
-      const a = AFFIXES[opt.affixId];
-      this.showBanner(`{i:swap} ${w.shortTag} + {i:sparkle} ${a.name}`, a.desc, PALETTE.yellow);
-    } else if (opt.kind === 'WEAPON' && opt.weaponId) {
-      this.state.activeWeapon = opt.weaponId;
-      const w = WEAPONS[opt.weaponId];
-      this.showBanner(`{i:swap} 换装 · ${w.name} (${w.traitBadge})`, w.desc, PALETTE.yellow);
+    if (opt.kind === 'WEAPON' && opt.weaponId) {
+      this.swapMainWeapon(opt.weaponId);
+    } else if (opt.kind === 'MAIN_UP') {
+      this.upgradeMainWeapon();
+    } else if (opt.kind === 'SIDEARM' && opt.weaponId) {
+      this.addSidearm(opt.weaponId);
     } else if (opt.kind === 'AFFIX' && opt.affixId) {
       this.state.affixes[opt.affixId] = (this.state.affixes[opt.affixId] || 0) + 1;
       const a = AFFIXES[opt.affixId];
-      this.showBanner(`{i:sparkle} ${a.name}`, a.desc, a.color);
+      this.showBanner(`${opt.exclusive ? '{i:star} 专属' : '{i:sparkle}'} ${a.name}`, a.desc, a.color);
     } else if (opt.kind === 'SQUAD_BOOST') {
       this.state.squadCount = Math.round(this.state.squadCount * (opt.squadMult ?? 1.4));
       this.state.shieldCount = clamp(this.state.shieldCount + 2, 0, 5);
@@ -346,6 +366,52 @@ export class GameWorld {
     this.uiCallbacks.onPhaseChange('PLAYING', this.state, this.save);
   }
 
+  /** 实习生换主武器；有「万金油」时旧武器变成外挂 */
+  private swapMainWeapon(weaponId: WeaponId): void {
+    const st = this.state;
+    if (weaponId === st.activeWeapon) return;
+    const old = st.activeWeapon;
+    st.activeWeapon = weaponId;
+    st.sidearms = st.sidearms.filter((sd) => sd.id !== weaponId);
+    if (st.affixes.jack_of_all > 0 && !st.sidearms.some((sd) => sd.id === old)) {
+      if (st.sidearms.length >= SIDEARM_MAX) st.sidearms.shift();
+      st.sidearms.push({ id: old, level: 1 });
+    }
+    const w = WEAPONS[weaponId];
+    this.showBanner(`{i:swap} 换装 · ${weaponDisplayName(weaponId, st.weaponLevel)}`, w.desc, PALETTE.yellow);
+  }
+
+  /** 主武器强化：Lv.3 进化（顿帧 + 印章） */
+  private upgradeMainWeapon(): void {
+    const st = this.state;
+    if (st.weaponLevel >= 3) return;
+    st.weaponLevel += 1;
+    const w = WEAPONS[st.activeWeapon];
+    if (st.weaponLevel === 3) {
+      st.hitstopTimer = Math.max(st.hitstopTimer, 0.08);
+      this.fx.stamp('进 化 !', PALETTE.yellow);
+      this.audio.playMilestone();
+      this.showBanner(`{i:sparkle} 进化 · ${w.evolvedName}`, w.evolvedDesc, PALETTE.yellow);
+    } else {
+      this.showBanner(`{i:sparkle} ${w.shortTag} Lv.${st.weaponLevel}`, '伤害 +20%、射速 +10%', PALETTE.yellow);
+    }
+  }
+
+  /** 外挂副武器：新装或升级（最多 2 个，满了替换最早的） */
+  private addSidearm(weaponId: WeaponId): void {
+    const st = this.state;
+    const w = WEAPONS[weaponId];
+    const have = st.sidearms.find((sd) => sd.id === weaponId);
+    if (have) {
+      have.level = Math.min(3, have.level + 1);
+      this.showBanner(`{i:magnet} 外挂 ${w.shortTag} Lv.${have.level}`, '外挂火力 +25%', w.color);
+      return;
+    }
+    if (st.sidearms.length >= SIDEARM_MAX) st.sidearms.shift();
+    st.sidearms.push({ id: weaponId, level: 1 });
+    this.showBanner(`{i:magnet} 外挂 · ${w.shortTag}`, '挂在小队两侧自动开火', w.color);
+  }
+
   pause(): void {
     if (this.state.phase !== 'PLAYING') return;
     this.state.phase = 'PAUSED';
@@ -379,18 +445,63 @@ export class GameWorld {
 
   triggerUltimate(): void {
     if (this.state.phase !== 'PLAYING' || this.state.ultCharge < 100) return;
-    this.state.ultCharge = 0;
-    this.state.ultActiveTimer = 3.5;
-    this.state.ultStampTimer = 0.95;
-    this.state.hitstopTimer = 0.045;
+    const st = this.state;
+    st.ultCharge = 0;
+    st.ultStampTimer = 0.95;
+    st.hitstopTimer = 0.045;
     this.ultIdleTimer = 0;
 
     this.audio.playUltimate();
     this.triggerShake(9, 0.24);
     this.quips.trigger('ULT_CAST');
-    this.spawnFxBurst(DESIGN_W * 0.5, PLAYER_Y - 120, PALETTE.yellow, 28);
+    this.spawnFxBurst(DESIGN_W * 0.5, PLAYER_Y - 120, this.char.color, 28);
     this.spawnFxBurst(DESIGN_W * 0.5, PLAYER_Y - 120, PALETTE.mint, 22);
 
+    switch (this.char.ult) {
+      case 'clear_double':
+        st.ultActiveTimer = 3.5;
+        this.ultClear();
+        break;
+      case 'drop_db': {
+        st.ultActiveTimer = 1.2;
+        this.ultClear();
+        const n = this.gates.flipAllRed();
+        if (n > 0) this.state.stats.gatesFlipped += n;
+        break;
+      }
+      case 'freeze':
+        st.freezeTimer = 3;
+        st.ultActiveTimer = 0.6;
+        break;
+      case 'big_pie': {
+        // 画大饼：接下来 3 扇「+」门翻倍（次数刷新、不叠加，避免滚雪球）+ 3 秒画饼充饥无敌
+        st.gateBoostCharges = 2;
+        st.invulnTimer = Math.max(st.invulnTimer, 1.5);
+        st.ultActiveTimer = 0.6;
+        this.spawnFloatingText(projectX(this.squad.leaderLaneX, PLAYER_Y), PLAYER_Y - 40, '下 2 扇蓝门 +30%!', PALETTE.yellow, 17);
+        break;
+      }
+      case 'rush':
+        st.rushTimer = 6;
+        st.ultActiveTimer = 0.6;
+        break;
+      case 'sweep_all': {
+        st.ultActiveTimer = 1.2;
+        const decals = this.fx.decals.length;
+        this.ultClear();
+        const beans = Math.min(40, decals);
+        if (beans > 0) {
+          st.stats.beansEarned += beans;
+          this.spawnFloatingText(DESIGN_W * 0.5, PLAYER_Y - 90, `墨渍换豆 +${beans}`, PALETTE.coffee, 17);
+        }
+        this.fx.decals.length = 0;
+        break;
+      }
+    }
+  }
+
+  /** 清屏类大招：清掉全部小怪与 Boss 弹幕，并对 Boss 造成伤害 */
+  private ultClear(): void {
     const ctx = this.buildCombatContext();
     // 结算复盘：大招清掉的血量 + 对 Boss 的伤害都算在「大招」名下
     let ultDmg = 0;
@@ -461,15 +572,36 @@ export class GameWorld {
       if (this.killSpreeTimer <= 0) this.killSpreeCount = 0;
     }
 
+    if (this.state.rushTimer > 0) this.state.rushTimer = Math.max(0, this.state.rushTimer - dt);
+    // 带薪病假：定时补人
+    if (this.state.affixes.sick_leave > 0) {
+      this.sickLeaveTimer += dt;
+      if (this.sickLeaveTimer >= 12) {
+        this.sickLeaveTimer = 0;
+        const add = 2 * this.state.affixes.sick_leave;
+        this.state.squadCount += add;
+        this.state.stats.maxSquad = Math.max(this.state.stats.maxSquad, this.state.squadCount);
+        this.spawnFloatingText(projectX(this.squad.leaderLaneX, PLAYER_Y), PLAYER_Y - 44, `病假归队 +${add}`, PALETTE.mint, 14);
+      }
+    }
+
     this.squad.step(dt);
 
     const ctx = this.buildCombatContext();
-    this.stepDirector(ctx);
-    this.gates.step(dt, this.squad.leaderLaneX, ctx);
-    this.combat.step(dt, this.enemies, this.bosses, this.gates, ctx);
-    this.enemies.step(dt, ctx);
-    this.bosses.step(dt, ctx);
-    this.horde.step(dt, this);
+    if (this.state.freezeTimer > 0) {
+      // 五彩斑斓黑：除了小队和子弹，整个世界定格（关卡时间也停住）
+      this.state.freezeTimer = Math.max(0, this.state.freezeTimer - dt);
+      this.state.elapsedSec -= dt;
+      this.combat.step(dt, this.enemies, this.bosses, this.gates, ctx);
+      this.enemies.step(0, ctx);
+    } else {
+      this.stepDirector(ctx);
+      this.gates.step(dt, this.squad.leaderLaneX, ctx);
+      this.combat.step(dt, this.enemies, this.bosses, this.gates, ctx);
+      this.enemies.step(dt, ctx);
+      this.bosses.step(dt, ctx);
+      this.horde.step(dt, this);
+    }
 
     this.squad.rebuildRenderUnits(this.state.squadCount);
   }
@@ -573,7 +705,34 @@ export class GameWorld {
       activeWeapon: this.state.activeWeapon,
       affixes: this.state.affixes,
       activeSynergies: this.state.synergies,
-      damageMult: this.talentFx.damageMult,
+      damageMult: this.talentFx.damageMult * this.char.mods.damageMult * (this.state.freezeTimer > 0 ? 1.5 : 1),
+      mods: this.char.mods,
+      weaponLevel: this.state.weaponLevel,
+      sidearms: this.state.sidearms,
+      rushTimer: this.state.rushTimer,
+      sweepChance: this.char.mods.sweepChance,
+      onSwept: () => {
+        if (this.state.affixes.trash_sort > 0) {
+          this.state.stats.beansEarned += 2;
+          if (Math.random() < 0.1 && this.state.shieldCount < 5) this.state.shieldCount += 1;
+        }
+      },
+      adjustGain: (gain, isMult) => {
+        // 蓝门收益：职业倍率 → 需求变更随机加成 → 画大饼翻倍；顺带给「转正答辩」计数
+        // × 门本身就会滚雪球，职业倍率只按 40% 生效，翻倍也只作用于 + 门
+        const m = this.char.mods.blueGateMult;
+        let g = gain * (isMult ? 1 + (m - 1) * 0.4 : m);
+        if (this.state.affixes.scope_creep > 0) g *= 1 + Math.random() * (isMult ? 0.15 : 0.3);
+        if (!isMult && this.state.gateBoostCharges > 0) {
+          this.state.gateBoostCharges -= 1;
+          g *= 1.3;
+        }
+        if (this.state.affixes.regularize > 0) {
+          this.blueGateCounter += 1;
+          if (this.blueGateCounter % 3 === 0 && this.state.shieldCount < 5) this.state.shieldCount += 1;
+        }
+        return Math.max(1, Math.round(g));
+      },
       lossMult: this.talentFx.lossMult,
       hasteMult: 1 + Math.min(20, this.state.hasteStacks) * 0.025 * this.state.affixes.kill_haste,
       setSquadCount: (next) => {
@@ -586,12 +745,12 @@ export class GameWorld {
         this.state.shieldCount = clamp(this.state.shieldCount + delta, 0, 5);
       },
       addUltCharge: (delta) => {
-        this.state.ultCharge = clamp(this.state.ultCharge + delta, 0, 100);
+        this.state.ultCharge = clamp(this.state.ultCharge + delta * this.char.mods.ultChargeMult, 0, 100);
       },
       openCrate: (reward) => {
         // 无尽模式保持固定掉落（它在 Boss 后已有三选一），只有主线补给箱弹三选一
         if (this.state.isEndless || this.state.phase !== 'PLAYING') return false;
-        const options = EndlessDirector.generateCrateUpgrades(this.state.activeWeapon, this.state.affixes, reward);
+        const options = generateUpgrades(this.loadout, reward);
         if (options.length === 0) return false;
         this.state.pendingUpgrades = options;
         this.state.upgradeSource = 'CRATE';
@@ -601,9 +760,10 @@ export class GameWorld {
         return true;
       },
       setWeapon: (weaponId) => {
-        this.state.activeWeapon = weaponId;
-        const w = WEAPONS[weaponId];
-        this.showBanner(`{i:swap} 换装 · ${w.name} (${w.traitBadge})`, w.desc, PALETTE.yellow);
+        // 无尽模式的固定掉落：实习生换主武器；专精角色同款 → 强化，其他 → 外挂
+        if (weaponId === this.state.activeWeapon) this.upgradeMainWeapon();
+        else if (this.char.mods.canSwapMain) this.swapMainWeapon(weaponId);
+        else this.addSidearm(weaponId);
         this.syncSynergies();
       },
       grantAffix: (affixId) => {
@@ -627,6 +787,7 @@ export class GameWorld {
       },
       consumeShieldOrSquad: (rawLoss) => {
         if (this.state.phase !== 'PLAYING') return;
+        if (this.state.invulnTimer > 0) return;
         const loss = Math.max(1, Math.round(rawLoss * this.talentFx.lossMult));
         const px = projectX(this.squad.leaderLaneX, PLAYER_Y);
         if (this.state.shieldCount > 0) {
@@ -695,9 +856,9 @@ export class GameWorld {
       onEnemyKilled: (beans, ult) => {
         this.state.stats.kills += 1;
         this.fx.onKillCount(this.state.stats.kills);
-        this.state.stats.beansEarned += beans;
+        this.state.stats.beansEarned += this.state.affixes.double_commission > 0 ? beans * 2 : beans;
         if (this.state.isEndless) this.state.endlessScore += 10 * this.state.endlessWave;
-        this.state.ultCharge = clamp(this.state.ultCharge + ult, 0, 100);
+        this.state.ultCharge = clamp(this.state.ultCharge + ult * this.char.mods.ultChargeMult, 0, 100);
         this.state.comboCount += 1;
         this.state.comboTimer = 2.4;
         this.killSpreeCount += 1;
@@ -726,10 +887,7 @@ export class GameWorld {
         this.state.stats.beansEarned += beans;
         if (this.state.isEndless) {
           this.state.endlessScore += 200 * this.state.endlessWave;
-          this.state.pendingUpgrades = EndlessDirector.generateUpgrades(
-            this.state.activeWeapon,
-            this.state.affixes
-          );
+          this.state.pendingUpgrades = generateUpgrades(this.loadout);
           this.state.upgradeSource = 'ENDLESS_BOSS';
           this.state.phase = 'UPGRADE_PICK';
           this.audio.playVictory();
@@ -799,7 +957,7 @@ export class GameWorld {
       }
     }
 
-    this.state.stats.beansEarned = Math.round(this.state.stats.beansEarned * this.talentFx.beanMult);
+    this.state.stats.beansEarned = Math.round(this.state.stats.beansEarned * this.talentFx.beanMult * this.char.mods.beanMult);
     this.save.coffeeBeans += this.state.stats.beansEarned;
     if (this.state.stats.maxSquad > this.save.bestSquad) {
       this.save.bestSquad = this.state.stats.maxSquad;

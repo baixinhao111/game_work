@@ -13,6 +13,8 @@ export interface GateTriggerContext {
   /** 主线补给箱打爆时打开三选一；返回 true 表示已接管奖励发放 */
   openCrate?: (reward: { weapon?: WeaponId; affix?: AffixId }) => boolean;
   setSquadCount: (next: number) => void;
+  /** 蓝门人数收益修正（职业被动 / 词条 / 画大饼），返回实际收益 */
+  adjustGain?: (gain: number, isMult: boolean) => number;
   addShield: (delta: number) => void;
   addUltCharge: (delta: number) => void;
   setWeapon: (weaponId: NonNullable<GateConfig['rewardWeapon']>) => void;
@@ -299,6 +301,26 @@ export class GateSystem {
     }
   }
 
+  /** 程序员大招「删库跑路」：场上所有红门直接洗白成蓝门，返回洗白数量 */
+  flipAllRed(): number {
+    let n = 0;
+    const items = this.pool.activeItems;
+    for (let i = 0; i < items.length; i++) {
+      const g = items[i];
+      if (!g.active || g.pairLocked) continue;
+      if (g.op !== '-' && g.op !== '÷') continue;
+      g.op = '+';
+      g.value = g.initialOp === '÷' ? 8 : Math.max(4, Math.round(g.initialValue * 0.6));
+      g.kind = 'ADD';
+      g.flippedToBlue = true;
+      g.hitFlashTimer = 0.12;
+      g.bounceScale = 1.15;
+      n++;
+    }
+    if (n > 0) this.audio.playGateFlip();
+    return n;
+  }
+
   private applyGateEffect(g: Gate, ctx: GateTriggerContext): void {
     if (g.kind === 'SUPPLY_CRATE') {
       // 直接撞上未打爆的补给桶：桶碎裂但不处罚玩家，只是错过奖励
@@ -329,12 +351,13 @@ export class GateSystem {
     const prevSquad = ctx.squadCount;
 
     if (g.op === '+') {
-      const next = prevSquad + g.value;
+      const gain = ctx.adjustGain ? ctx.adjustGain(g.value, false) : g.value;
+      const next = prevSquad + gain;
       ctx.setSquadCount(next);
       ctx.addUltCharge(10);
       this.audio.playGateGood();
       ctx.spawnFxBurst(fxX, fxY, PALETTE.mint, 14);
-      ctx.spawnFloatingText(fxX, fxY, `+${g.value} 人`, PALETTE.mint, 18);
+      ctx.spawnFloatingText(fxX, fxY, `+${gain} 人`, PALETTE.mint, 18);
 
       if (g.kind === 'SEESAW' && g.value >= g.initialValue + 4) {
         ctx.triggerQuip('SEESAW_PRO');
@@ -345,8 +368,9 @@ export class GateSystem {
         ctx.triggerQuip('BAD_MATH_CHOICE');
       }
     } else if (g.op === '×') {
-      const next = Math.round(prevSquad * g.value);
-      const gain = next - prevSquad;
+      const rawGain = Math.round(prevSquad * g.value) - prevSquad;
+      const gain = ctx.adjustGain ? ctx.adjustGain(rawGain, true) : rawGain;
+      const next = prevSquad + gain;
       ctx.setSquadCount(next);
       ctx.addUltCharge(12);
       if (g.kind === 'OVERLOAD') {

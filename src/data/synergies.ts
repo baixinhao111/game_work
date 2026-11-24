@@ -4,8 +4,10 @@ import type { AffixId, SynergyId, WeaponId } from '../game/types';
 export interface SynergyConfig {
   id: SynergyId;
   name: string;
-  weapon: WeaponId;
+  /** 「武器 × 词条」反应填 weapon；「词条 × 词条」反应填 affix2 */
+  weapon?: WeaponId;
   affix: AffixId;
+  affix2?: AffixId;
   desc: string;
   color: string;
 }
@@ -50,6 +52,30 @@ export const SYNERGIES: Record<SynergyId, SynergyConfig> = {
     affix: 'crit_rage',
     desc: '浮游炮暴击进入金色超频，射速+25%激光如雨',
     color: PALETTE.purple
+  },
+  mop_freeze: {
+    id: 'mop_freeze',
+    name: '拖地结冰',
+    weapon: 'broom',
+    affix: 'chill',
+    desc: '扫帚扫过的地面结冰，敌人深度冻结且扇面更宽',
+    color: PALETTE.mint
+  },
+  shatter_ice: {
+    id: 'shatter_ice',
+    name: '超导碎冰',
+    affix: 'chill',
+    affix2: 'chain_lightning',
+    desc: '电弧打到被减速的敌人时伤害翻倍、必定连锁',
+    color: PALETTE.mint
+  },
+  wildfire: {
+    id: 'wildfire',
+    name: '燎原',
+    affix: 'overtime_burn',
+    affix2: 'split',
+    desc: '分裂弹继承燃烧，烧伤再提升 50%',
+    color: PALETTE.red
   }
 };
 
@@ -61,7 +87,8 @@ export function computeActiveSynergies(
 ): SynergyId[] {
   const out: SynergyId[] = [];
   for (const cfg of SYNERGY_LIST) {
-    if (cfg.weapon === weapon && (affixes[cfg.affix] ?? 0) > 0) {
+    const has1 = (affixes[cfg.affix] ?? 0) > 0;
+    if (cfg.weapon ? cfg.weapon === weapon && has1 : has1 && (affixes[cfg.affix2!] ?? 0) > 0) {
       out.push(cfg.id);
     }
   }
@@ -75,11 +102,17 @@ export function findSynergyForChoice(
   nextAffix?: AffixId
 ): SynergyConfig | null {
   const testWeapon = nextWeapon ?? currentWeapon;
+  const have = (a: AffixId) => (affixes[a] ?? 0) > 0;
   for (const cfg of SYNERGY_LIST) {
-    const hasAffix = (affixes[cfg.affix] ?? 0) > 0 || cfg.affix === nextAffix;
-    if (cfg.weapon === testWeapon && hasAffix) {
-      const alreadyActive = cfg.weapon === currentWeapon && (affixes[cfg.affix] ?? 0) > 0;
-      if (!alreadyActive) return cfg;
+    if (cfg.weapon) {
+      const hasAffix = have(cfg.affix) || cfg.affix === nextAffix;
+      if (cfg.weapon === testWeapon && hasAffix) {
+        const alreadyActive = cfg.weapon === currentWeapon && have(cfg.affix);
+        if (!alreadyActive) return cfg;
+      }
+    } else if (nextAffix && !(have(cfg.affix) && have(cfg.affix2!))) {
+      // 词条 × 词条：这张牌补上缺的那一半
+      if ((nextAffix === cfg.affix && have(cfg.affix2!)) || (nextAffix === cfg.affix2 && have(cfg.affix))) return cfg;
     }
   }
   return null;

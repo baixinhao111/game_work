@@ -38,6 +38,9 @@ const BOSS_SPRITES = {
   kpi: 'bossKpi'
 } as const;
 
+/** RGB 光轴风暴的跑马灯配色 */
+const RGB_KEYS = ['#FF3366', '#FFE600', '#00F5D4', '#4D9DFF', '#9B5DE5'];
+
 export class Renderer {
   private readonly sortedEnemiesScratch: Enemy[] = [];
   private scrollOffset = 0;
@@ -1757,8 +1760,36 @@ export class Renderer {
     ctx.restore();
 
     const lx = projectX(world.squad.leaderLaneX, PLAYER_Y);
+    // 外挂副武器：挂在小队两侧的小炮台（武器色 + 等级点）
+    const sides = world.state.sidearms;
+    for (let i = 0; i < sides.length && i < 2; i++) {
+      const sd = sides[i];
+      const side = i === 0 ? -1 : 1;
+      const px = projectX(world.squad.leaderLaneX + side * 50, PLAYER_Y);
+      const py = PLAYER_Y - 16 + Math.sin(t * 5 + i * 2) * 2.5;
+      ctx.fillStyle = PALETTE.ink;
+      ctx.beginPath();
+      ctx.arc(px + 2, py + 2, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = WEAPONS[sd.id].color;
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(px, py, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = PALETTE.ink;
+      ctx.fillRect(px - 2, py - 15, 4, 8);
+      for (let k = 0; k < sd.level; k++) {
+        ctx.fillStyle = PALETTE.yellow;
+        ctx.beginPath();
+        ctx.arc(px - 5 + k * 5, py + 15, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     if (world.state.activeWeapon === 'ai_pod') {
-      for (const side of [-1, 1]) {
+      const pods = world.state.weaponLevel >= 3 ? [-1.8, -1, 1, 1.8] : [-1, 1];
+      for (const side of pods) {
         const px = projectX(world.squad.leaderLaneX + side * 36, PLAYER_Y);
         const py = PLAYER_Y - 30 + Math.sin(t * 6 + side) * 3;
         ctx.fillStyle = PALETTE.ink;
@@ -1838,7 +1869,12 @@ export class Renderer {
         ctx.save();
         ctx.translate(sx, b.y);
         ctx.rotate(b.rot);
-        ctx.fillStyle = b.isCrit || b.synergyPowered ? PALETTE.yellow : PALETTE.paper;
+        // 进化 RGB 光轴风暴：键帽按跑马灯换色
+        ctx.fillStyle = b.evolved
+          ? RGB_KEYS[(Math.floor(b.age * 10) + b.keyLabel.length) % RGB_KEYS.length]
+          : b.isCrit || b.synergyPowered
+            ? PALETTE.yellow
+            : PALETTE.paper;
         ctx.strokeStyle = PALETTE.ink;
         ctx.lineWidth = 2.2;
         ctx.beginPath();
@@ -1885,6 +1921,29 @@ export class Renderer {
         ctx.beginPath();
         ctx.moveTo(-size, -size * 0.75);
         ctx.lineTo(size, -size * 0.75);
+        ctx.stroke();
+        ctx.restore();
+      } else if (b.kind === 'broom') {
+        // 扫帚旋风：月牙形横扫气浪，随射程淡出
+        const k = b.maxAge > 0 ? Math.max(0, 1 - b.age / b.maxAge) : 1;
+        const r = b.radius * s * (1 + (1 - k) * 0.5);
+        const dir = Math.atan2(b.vx, -b.vy);
+        ctx.save();
+        ctx.translate(sx, b.y);
+        ctx.rotate(dir);
+        ctx.globalAlpha = 0.35 + 0.65 * k;
+        ctx.strokeStyle = PALETTE.ink;
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.arc(0, r * 0.7, r, Math.PI * 1.2, Math.PI * 1.8);
+        ctx.stroke();
+        ctx.strokeStyle = b.synergyPowered ? PALETTE.mint : b.evolved ? PALETTE.yellow : PALETTE.coffee;
+        ctx.lineWidth = 4.5;
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(248, 247, 242, 0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, r * 0.7 + 4, r * 0.8, Math.PI * 1.25, Math.PI * 1.75);
         ctx.stroke();
         ctx.restore();
       } else if (b.kind === 'pod') {
@@ -2164,11 +2223,31 @@ export class Renderer {
       ctx.font = '900 22px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('18:00 准点下班', 0, -11);
+      ctx.fillText(world.char.ult === 'clear_double' ? '18:00 准点下班' : `${world.char.ultName}!`, 0, -11);
 
       ctx.fillStyle = PALETTE.red;
       ctx.font = '900 16px sans-serif';
-      ctx.fillText('已 读 不 回 · 全 屏 清 空', 0, 17);
+      ctx.fillText(world.char.ultStampSub, 0, 17);
+      ctx.restore();
+    }
+
+    // 五彩斑斓黑：时间冻结时整屏蒙一层紫黑色调 + 倒计时
+    if (state.freezeTimer > 0) {
+      const a = Math.min(1, state.freezeTimer / 0.3, (3 - state.freezeTimer) / 0.2);
+      ctx.save();
+      ctx.globalAlpha = 0.28 * a;
+      ctx.fillStyle = '#2A0F4A';
+      ctx.fillRect(0, 0, DESIGN_W, DESIGN_H);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = PALETTE.paper;
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 5;
+      ctx.font = '900 26px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const label = `时间冻结 ${state.freezeTimer.toFixed(1)}s`;
+      ctx.strokeText(label, DESIGN_W * 0.5, 228);
+      ctx.fillText(label, DESIGN_W * 0.5, 228);
       ctx.restore();
     }
   }

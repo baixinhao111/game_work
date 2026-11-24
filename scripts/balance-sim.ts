@@ -8,7 +8,7 @@ import { LEVELS } from '../src/data/levels';
 import { AudioEngine } from '../src/engine/AudioEngine';
 import { LEADER_MAX_X, PLAYER_Y, SCROLL_SPEED } from '../src/engine/Viewport';
 import { GameWorld } from '../src/game/GameWorld';
-import type { Gate, TalentId } from '../src/game/types';
+import type { CharacterId, Gate, TalentId } from '../src/game/types';
 
 // ---- 浏览器环境桩 ----
 const mem = new Map<string, string>();
@@ -173,6 +173,20 @@ interface RunResult {
   beans: number;
   kills: number;
   xp: number;
+  ults: number;
+}
+
+/** 熟练玩家：化学反应 > 主武器强化 > 专属词条 > 随机；新手随便点 */
+function pickCard(world: GameWorld, kind: BotKind): number {
+  const opts = world.state.pendingUpgrades;
+  if (kind !== 'skilled') return Math.floor(Math.random() * opts.length);
+  const order = [
+    opts.findIndex((o) => o.synergyTitle),
+    opts.findIndex((o) => o.kind === 'MAIN_UP'),
+    opts.findIndex((o) => o.exclusive)
+  ];
+  for (const i of order) if (i >= 0) return i;
+  return Math.floor(Math.random() * opts.length);
 }
 
 function runOnce(day: number, kind: BotKind, talentLv: number): RunResult {
@@ -192,8 +206,18 @@ function runOnce(day: number, kind: BotKind, talentLv: number): RunResult {
   world.save.talents = talents;
   world.save.highestCleared = 5;
   world.save.muted = true;
+  // 指定角色（CHAR=coder 等）：直接视为已解锁
+  world.save.xp = 1e6;
+  world.save.bestKills = 1e6;
+  world.save.selectedCharacter = (process.env.CHAR || 'intern') as CharacterId;
   world.startNewRun(day);
   const bot = new Bot(kind, world);
+  let ults = 0;
+  const origUlt = world.triggerUltimate.bind(world);
+  world.triggerUltimate = () => {
+    if (world.state.ultCharge >= 100) ults++;
+    origUlt();
+  };
 
   let t = 0;
   let lastSquad = world.state.squadCount;
@@ -201,9 +225,7 @@ function runOnce(day: number, kind: BotKind, talentLv: number): RunResult {
   while ((world.state.phase === 'PLAYING' || world.state.phase === 'UPGRADE_PICK') && t < MAX_SEC) {
     if (world.state.phase === 'UPGRADE_PICK') {
       // 熟练玩家优先选能触发化学反应的牌；新手随便点
-      const opts = world.state.pendingUpgrades;
-      const syn = opts.findIndex((o) => o.synergyTitle);
-      world.pickUpgrade(kind === 'skilled' && syn >= 0 ? syn : Math.floor(Math.random() * opts.length));
+      world.pickUpgrade(pickCard(world, kind));
       continue;
     }
     bot.step(DT);
@@ -225,7 +247,8 @@ function runOnce(day: number, kind: BotKind, talentLv: number): RunResult {
     endSquad: st.squadCount,
     beans: st.stats.beansEarned,
     kills: st.stats.kills,
-    xp: st.xpResult ? st.xpResult.total : 0
+    xp: st.xpResult ? st.xpResult.total : 0,
+    ults
   };
 }
 
@@ -248,9 +271,7 @@ function runCareer(kind: BotKind, totalRuns: number): void {
     let t = 0;
     while ((world.state.phase === 'PLAYING' || world.state.phase === 'UPGRADE_PICK') && t < MAX_SEC) {
       if (world.state.phase === 'UPGRADE_PICK') {
-        const opts = world.state.pendingUpgrades;
-        const syn = opts.findIndex((o) => o.synergyTitle);
-        world.pickUpgrade(kind === 'skilled' && syn >= 0 ? syn : Math.floor(Math.random() * opts.length));
+        world.pickUpgrade(pickCard(world, kind));
         continue;
       }
       bot.step(DT);
@@ -295,7 +316,7 @@ const cases: Array<[BotKind, number]> = process.env.CASE ? [[process.env.CASE.sp
   ['skilled', 6]
 ];
 
-console.log('day | bot        tal | win%  | bossSec | endBossHp | maxSq | endSq | beans | kills |  xp');
+console.log('day | bot        tal | win%  | bossSec | endBossHp | maxSq | endSq | beans | kills |  xp  | ults');
 for (const level of LEVELS) {
   if (onlyDay && level.day !== onlyDay) continue;
   for (const [kind, tal] of cases) {
@@ -314,7 +335,8 @@ for (const level of LEVELS) {
         ` ${avg(wins.map((r) => r.endSquad)).toFixed(0).padStart(4)} `,
         ` ${avg(rs.map((r) => r.beans)).toFixed(0).padStart(4)} `,
         ` ${avg(rs.map((r) => r.kills)).toFixed(0).padStart(4)} `,
-        ` ${avg(rs.map((r) => r.xp)).toFixed(0).padStart(4)}`
+        ` ${avg(rs.map((r) => r.xp)).toFixed(0).padStart(4)} `,
+        ` ${avg(rs.map((r) => r.ults)).toFixed(1).padStart(4)}`
       ].join('|')
     );
   }

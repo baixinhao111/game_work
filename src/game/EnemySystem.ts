@@ -27,6 +27,11 @@ export interface EnemyStepContext {
   overloadEnemyTimer: number;
   setInvuln: (sec: number) => void;
   consumeShieldOrSquad: (loss: number) => void;
+  /** 保洁阿姨被动：小怪撞上小队时被直接扫掉的概率 */
+  sweepChance?: number;
+  onSwept?: () => void;
+  /** 燃烧伤害计入复盘 */
+  recordDamage?: (src: 'affix', amount: number) => void;
   spawnSupportGate: (cfg: GateConfig) => void;
   spawnFxBurst: (x: number, y: number, color: string, count: number) => void;
   spawnFloatingText: (x: number, y: number, text: string, color: string, size?: number) => void;
@@ -71,6 +76,8 @@ export class EnemySystem {
         flashTimer: 0,
         chillTimer: 0,
         deepChillTimer: 0,
+        burnTimer: 0,
+        burnDps: 0,
         wobblePhase: 0,
         flankAmp: 0,
         splitsOnDeath: 0,
@@ -81,6 +88,8 @@ export class EnemySystem {
         e.flashTimer = 0;
         e.chillTimer = 0;
         e.deepChillTimer = 0;
+        e.burnTimer = 0;
+        e.burnDps = 0;
         e.flankAmp = 0;
         e.splitsOnDeath = 0;
         e.rot = 0;
@@ -233,6 +242,17 @@ export class EnemySystem {
       if (!e.active) continue;
 
       if (e.flashTimer > 0) e.flashTimer = Math.max(0, e.flashTimer - dt);
+      // 加班燃烧：持续掉血
+      if (e.burnTimer > 0 && dt > 0) {
+        e.burnTimer = Math.max(0, e.burnTimer - dt);
+        const d = Math.min(e.hp, e.burnDps * dt);
+        e.hp -= d;
+        ctx.recordDamage?.('affix', d);
+        if (e.hp <= 0) {
+          this.killEnemy(e, ctx);
+          continue;
+        }
+      }
       if (e.chillTimer > 0) e.chillTimer = Math.max(0, e.chillTimer - dt);
       if (e.deepChillTimer > 0) e.deepChillTimer = Math.max(0, e.deepChillTimer - dt);
 
@@ -286,6 +306,13 @@ export class EnemySystem {
       ) {
         if (ctx.ultActiveTimer > 0) {
           this.killEnemy(e, ctx);
+          continue;
+        }
+        // 保洁阿姨：小怪（非精英）有概率被顺手扫掉，不减员
+        const elite = e.configId === 'ppt_pie' || e.configId === 'client_tweak';
+        if (!elite && ctx.sweepChance && Math.random() < ctx.sweepChance) {
+          this.killEnemy(e, ctx);
+          ctx.onSwept?.();
           continue;
         }
         // 撞上即同归于尽：敌人消失、小队减员。不再有“无敌帧白嫖”，每只都算数

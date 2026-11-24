@@ -1,7 +1,7 @@
 import { BADGES } from '../data/badges';
 import { CHARACTERS, getCharacter, isCharacterUnlocked, nextRankUnlock, CLEANER_KILLS } from '../data/characters';
 import { RANKS, rankProgress, rankForXp } from '../data/ranks';
-import { AFFIXES } from '../data/weapons';
+import { AFFIXES, weaponDisplayName } from '../data/weapons';
 import { BOSSES } from '../data/enemies';
 import { LEVELS } from '../data/levels';
 import type { ActiveQuip } from '../data/quips';
@@ -9,7 +9,7 @@ import { SYNERGIES } from '../data/synergies';
 import { talentCost, TALENT_ORDER, TALENTS } from '../data/talents';
 import { WEAPONS } from '../data/weapons';
 import { EndlessDirector } from '../game/EndlessDirector';
-import type { DamageSource, GamePhase, GameState, RunXpResult, SaveData, TalentId } from '../game/types';
+import type { CharacterId, DamageSource, GamePhase, GameState, RunXpResult, SaveData, TalentId } from '../game/types';
 import { saveImageToAlbum } from '../platform/MiniToolBridge';
 import { hydrateIcons, iconSvg, richHtml } from './icons';
 
@@ -48,6 +48,8 @@ export interface UIActions {
   /** 设置已在 save.settings 上修改，需要应用并保存 */
   onSettingsChanged: () => void;
   onReplayTutorial: () => void;
+  /** 在同事名册里选出战角色 */
+  onSelectCharacter: (id: CharacterId) => void;
   getSave: () => SaveData;
   getSelectedDay: () => number;
 }
@@ -108,6 +110,8 @@ export class UIController {
   private readonly dockPickupBar = document.getElementById('dock-pickup-bar')!;
   private readonly dockPickupTitle = document.getElementById('dock-pickup-title')!;
   private readonly dockPickupSub = document.getElementById('dock-pickup-sub')!;
+  /** 本局角色的大招名（开局时由 syncPhase 设置） */
+  private ultName = '准点下班';
   /** 当前显示中的工作群消息（QuipSystem 到期时传 null） */
   private chatActive = false;
   private lastPickupKey = '';
@@ -263,6 +267,14 @@ export class UIController {
     };
     document.getElementById('rank-card')!.addEventListener('click', openRoster);
     document.getElementById('char-slot')!.addEventListener('click', openRoster);
+    document.getElementById('roster-grid')!.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest('button[data-char]') as HTMLButtonElement | null;
+      if (!btn || btn.disabled) return;
+      this.actions.onSelectCharacter(btn.dataset.char as CharacterId);
+      const save = this.actions.getSave();
+      this.renderRoster(save);
+      this.renderMenu(save);
+    });
     document.getElementById('btn-roster-close')!.addEventListener('click', () => {
       this.rosterOverlay.classList.add('hidden');
     });
@@ -364,6 +376,7 @@ export class UIController {
       this.populateResult(phase === 'VICTORY', state, save);
       this.playXpAnimation(state.xpResult);
     } else if (phase === 'PLAYING') {
+      this.ultName = getCharacter(state.character).ultName;
       if (state.isEndless) {
         this.hudDayBadge.textContent = `无尽加班 · 第 ${state.endlessWave} 波`;
       } else {
@@ -482,16 +495,20 @@ export class UIController {
       const state = current
         ? '出战中'
         : open
-          ? '即将上岗'
+          ? '点击上岗'
           : hidden
             ? `最高击杀 ${Math.min(save.bestKills, CLEANER_KILLS)}/${CLEANER_KILLS}`
             : c.unlockHint;
-      return `<div class="roster-item ${current ? 'current' : ''} ${open ? '' : 'locked'}">
+      const detail = open
+        ? `<span class="roster-detail"><b>${c.passiveName}</b>${c.passiveDesc}<br /><b>${c.ultName}</b>${c.ultDesc}</span>`
+        : '';
+      return `<button type="button" class="roster-item ${current ? 'current' : ''} ${open ? '' : 'locked'}" data-char="${c.id}" ${open ? '' : 'disabled'}>
         <span class="char-slot-avatar" style="background:${open ? c.color : ''}">${avatar}</span>
         <b>${hidden ? '？？？' : c.name}</b>
-        <small>${hidden ? c.unlockHint : c.role}</small>
+        <small>${hidden ? c.unlockHint : `${c.role} · ${c.weaponName}`}</small>
+        ${detail}
         <span class="roster-state">${state}</span>
-      </div>`;
+      </button>`;
     }).join('');
   }
 
@@ -510,7 +527,7 @@ export class UIController {
     }
     this.upgradeList.innerHTML = state.pendingUpgrades
       .map(
-        (u, idx) => `<button type="button" class="upgrade-card" data-upidx="${idx}">
+        (u, idx) => `<button type="button" class="upgrade-card${u.exclusive ? ' is-exclusive' : ''}${u.kind === 'MAIN_UP' ? ' is-main' : ''}" data-upidx="${idx}">
           <div class="upgrade-card-top">
             <span class="upgrade-title">${richHtml(u.title)}</span>
             ${u.synergyTitle ? `<span class="upgrade-synergy-pill">${iconSvg('flask')} ${u.synergyTitle}</span>` : ''}
@@ -564,12 +581,9 @@ export class UIController {
     if (state.phase !== 'PLAYING' && state.phase !== 'PAUSED' && state.phase !== 'UPGRADE_PICK') return;
 
     const wCfg = WEAPONS[state.activeWeapon];
-    setRich(
-      this.hudWeaponBadge,
-      state.affixes.ricochet > 0
-        ? `${wCfg.shortTag} · ${wCfg.traitBadge} +弹射`
-        : `${wCfg.shortTag} · ${wCfg.traitBadge}`
-    );
+    const lvTag = state.weaponLevel >= 3 ? `{i:star}${wCfg.evolvedName}` : `${wCfg.shortTag} Lv.${state.weaponLevel}`;
+    const sideTag = state.sidearms.map((sd) => `+${WEAPONS[sd.id].shortTag}`).join(' ');
+    setRich(this.hudWeaponBadge, sideTag ? `${lvTag} · ${sideTag}` : `${lvTag} · ${wCfg.traitBadge}`);
     this.hudWeaponBadge.style.borderLeftColor = wCfg.color;
 
     if (state.shieldCount > 0) {
@@ -605,11 +619,11 @@ export class UIController {
     if (pct >= 100) {
       this.btnUlt.disabled = false;
       this.btnUlt.classList.add('ready');
-      this.ultLabel.textContent = '18:00 准点下班!';
+      this.ultLabel.textContent = this.ultName === '准点下班' ? '18:00 准点下班!' : `${this.ultName}!`;
     } else {
       this.btnUlt.disabled = true;
       this.btnUlt.classList.remove('ready');
-      this.ultLabel.textContent = `下班蓄力 ${pct}%`;
+      this.ultLabel.textContent = `${this.ultName === '准点下班' ? '下班蓄力' : this.ultName} ${pct}%`;
     }
   }
 
@@ -726,8 +740,8 @@ export class UIController {
 
   /** 本局复盘：构筑标签 + 伤害来源条 */
   private renderRecap(state: GameState): void {
-    const w = WEAPONS[state.activeWeapon];
-    const tags: string[] = [`<span class="tag">${richHtml(w.shortTag)}</span>`];
+    const tags: string[] = [`<span class="tag">${state.weaponLevel >= 3 ? iconSvg('star') + ' ' : ''}${weaponDisplayName(state.activeWeapon, state.weaponLevel)}${state.weaponLevel === 2 ? ' Lv.2' : ''}</span>`];
+    for (const sd of state.sidearms) tags.push(`<span class="tag">外挂 ${WEAPONS[sd.id].shortTag}${sd.level > 1 ? ` Lv.${sd.level}` : ''}</span>`);
     (Object.keys(state.affixes) as (keyof typeof state.affixes)[]).forEach((id) => {
       const lv = state.affixes[id];
       if (lv > 0) tags.push(`<span class="tag">${AFFIXES[id].name}${lv > 1 ? ` ×${lv}` : ''}</span>`);
@@ -736,9 +750,10 @@ export class UIController {
     this.recapBuild.innerHTML = tags.join('');
 
     const dmg = state.stats.damage;
-    const total = dmg.weapon + dmg.affix + dmg.synergy + dmg.ult;
+    const total = dmg.weapon + dmg.sidearm + dmg.affix + dmg.synergy + dmg.ult;
     const rows: { id: DamageSource; label: string; color: string }[] = [
       { id: 'weapon', label: '主武器', color: '#FF7A3D' },
+      { id: 'sidearm', label: '外挂', color: 'var(--purple)' },
       { id: 'affix', label: '词条', color: 'var(--mint)' },
       { id: 'synergy', label: '化学反应', color: 'var(--purple)' },
       { id: 'ult', label: '大招', color: 'var(--yellow)' }

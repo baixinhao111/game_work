@@ -14,7 +14,8 @@ export type WeaponId =
   | 'americano'
   | 'drone'
   | 'headphone'
-  | 'ai_pod';
+  | 'ai_pod'
+  | 'broom';
 
 export type AffixId =
   | 'split'
@@ -24,14 +25,33 @@ export type AffixId =
   | 'chain_lightning'
   | 'crit_rage'
   | 'kill_haste'
-  | 'vamp_shield';
+  | 'vamp_shield'
+  // v1.0 新通用词条
+  | 'sick_leave'
+  | 'overtime_burn'
+  // v1.0 职业专属词条（每个角色 2 张，见 docs/06 §1.4）
+  | 'jack_of_all'
+  | 'regularize'
+  | 'stack_overflow'
+  | 'ctrl_cv'
+  | 'premium_gray'
+  | 'pixel_align'
+  | 'scope_creep'
+  | 'prd_rush'
+  | 'big_client'
+  | 'double_commission'
+  | 'floor_wax'
+  | 'trash_sort';
 
 export type SynergyId =
   | 'superconduct'
   | 'keyboard_rain'
   | 'swarm_delivery'
   | 'absolute_zero'
-  | 'gpt_overclock';
+  | 'gpt_overclock'
+  | 'mop_freeze'
+  | 'shatter_ice'
+  | 'wildfire';
 
 export type EnemyId =
   | 'overtime_zombie'
@@ -88,6 +108,12 @@ export type TalentId = 'espresso' | 'thick_skin' | 'abacus' | 'bonus';
 
 export interface WeaponConfig {
   id: WeaponId;
+  /** Lv.3 进化后的名字 */
+  evolvedName: string;
+  /** 进化质变说明 */
+  evolvedDesc: string;
+  /** 子弹存活时间上限（秒）；不填 = 飞出屏幕才消失 */
+  rangeSec?: number;
   name: string;
   shortTag: string;
   traitBadge: string;
@@ -200,7 +226,7 @@ export interface LevelConfig {
   timeline: LevelWaveConfig[];
 }
 
-export type BulletKind = 'stapler' | 'keycap' | 'beam' | 'split' | 'drone' | 'wave' | 'pod';
+export type BulletKind = 'stapler' | 'keycap' | 'beam' | 'split' | 'drone' | 'wave' | 'pod' | 'broom';
 
 export interface Bullet extends Poolable {
   laneX: number;
@@ -223,6 +249,16 @@ export interface Bullet extends Poolable {
   keyLabel: string;
   rot: number;
   age: number;
+  /** >0 时到时自动消失（扫帚是短射程武器） */
+  maxAge: number;
+  /** 进化形态（Lv.3）发射的子弹 */
+  evolved: boolean;
+  /** 外挂副武器发射的子弹 */
+  sidearm: boolean;
+  /** 命中附带的燃烧：每秒伤害 = 本发伤害 × burn */
+  burn: number;
+  /** 已经弹射过一次（程序员被动只加成一次） */
+  bounced: boolean;
 }
 
 export interface Enemy extends Poolable {
@@ -243,6 +279,9 @@ export interface Enemy extends Poolable {
   flashTimer: number;
   chillTimer: number;
   deepChillTimer: number;
+  /** 加班燃烧：剩余秒数与每秒伤害 */
+  burnTimer: number;
+  burnDps: number;
   wobblePhase: number;
   flankAmp: number;
   splitsOnDeath: number;
@@ -400,7 +439,10 @@ export interface PickupBanner {
 
 export interface UpgradeOption {
   id: string;
-  kind: 'WEAPON' | 'AFFIX' | 'SQUAD_BOOST';
+  /** WEAPON=换主武器（实习生专属）· MAIN_UP=主武器强化 · SIDEARM=外挂副武器 */
+  kind: 'WEAPON' | 'AFFIX' | 'SQUAD_BOOST' | 'MAIN_UP' | 'SIDEARM';
+  /** 职业专属词条 */
+  exclusive?: boolean;
   title: string;
   desc: string;
   color: string;
@@ -424,6 +466,18 @@ export interface GameState {
   ultActiveTimer: number;
   ultStampTimer: number;
   activeWeapon: WeaponId;
+  /** 出战角色 */
+  character: CharacterId;
+  /** 主武器等级 1~3（3 = 进化） */
+  weaponLevel: number;
+  /** 外挂副武器（最多 2 个） */
+  sidearms: Sidearm[];
+  /** 设计师大招：时间冻结剩余秒数 */
+  freezeTimer: number;
+  /** 销售大招：冲业绩剩余秒数 */
+  rushTimer: number;
+  /** 产品经理大招：接下来几扇蓝门收益翻倍 */
+  gateBoostCharges: number;
   affixes: Record<AffixId, number>;
   synergies: SynergyId[];
   pendingUpgrades: UpgradeOption[];
@@ -460,9 +514,14 @@ export interface GameState {
 }
 
 /** 伤害来源：主武器 / 词条（分裂、电弧）/ 化学反应强化弹 / 大招 */
-export type DamageSource = 'weapon' | 'affix' | 'synergy' | 'ult';
+export type DamageSource = 'weapon' | 'sidearm' | 'affix' | 'synergy' | 'ult';
 
 export type CharacterId = 'intern' | 'coder' | 'designer' | 'pm' | 'sales' | 'cleaner';
+
+export interface Sidearm {
+  id: WeaponId;
+  level: number;
+}
 
 export interface GameSettings {
   /** 0~1 */
